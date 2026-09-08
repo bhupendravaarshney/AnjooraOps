@@ -1,0 +1,28 @@
+{
+  "name": "anjoora-web",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed.mjs",
+    "staff:manage": "node scripts/manage-staff.mjs",
+    "ops:restore-test": "node scripts/verify-compose-backup.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:integration": "node test/db-integration.mjs",
+    "test:http": "node test/http-smoke.mjs",
+    "verify": "node scripts/verify.mjs && node --test test/*.test.mjs && node test/db-integration.mjs"
+  },
+  "dependencies": {
+    "next": "16.3.4",
+    "pg": "8.23.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "type": "module"
+}

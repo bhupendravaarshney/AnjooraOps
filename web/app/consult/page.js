@@ -1,0 +1,2 @@
+import ConsultForm from '@/app/components/ConsultForm';
+export default function ConsultPage(){return <main className="container" style={{maxWidth:900}}><div className="section-head"><div><div className="tag">Integration test</div><h1>ANJOORA consultation</h1><p className="muted">This form demonstrates the exact save-first, WhatsApp-second workflow. Your existing frontend can call the same API.</p></div></div><ConsultForm/></main>}
