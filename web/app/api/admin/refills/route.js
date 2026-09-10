@@ -1,11 +1,10 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { randomToken, tokenHash } from '@/lib/security';
 import { queueWhatsAppText } from '@/lib/whatsapp';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { assertExpectedState, assertTransition, lockEntity } from '@/lib/transitions';
 
 const DECISIONS = new Set(['SAME', 'MODIFY', 'STOP']);
@@ -129,7 +128,7 @@ export async function POST(request) {
       return { repeated: false };
     });
     const suffix = result.order ? `?order=${encodeURIComponent(result.order.public_id)}` : '';
-    return NextResponse.redirect(new URL(`/admin/refills${suffix}`, request.url), 303);
+    return sameOriginRedirect(`/admin/refills${suffix}`);
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

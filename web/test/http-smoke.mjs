@@ -39,6 +39,14 @@ async function jsonRequest(url, options = {}) {
   return { response, body };
 }
 
+function assertSameOriginRedirect(response, label) {
+  const location = response.headers.get('location');
+  assert.ok(
+    location?.startsWith('/') && !location.startsWith('//'),
+    `${label} must return a relative same-origin Location header; received ${location || 'none'}.`,
+  );
+}
+
 function testPhone() {
   return `919${crypto.randomInt(100_000_000, 1_000_000_000)}`;
 }
@@ -183,6 +191,7 @@ try {
     signal: AbortSignal.timeout(10_000),
   });
   assert.equal(supportLogin.status, 303, 'Valid support login should create a session.');
+  assertSameOriginRedirect(supportLogin, 'Valid support login');
   const sessionCookie = String(supportLogin.headers.get('set-cookie') || '').split(';')[0];
   assert.ok(sessionCookie.includes('='), 'Login should set a session cookie.');
   const forbiddenInventory = await jsonRequest(new URL('/api/admin/inventory', opsUrl), {
@@ -237,6 +246,7 @@ try {
     signal: AbortSignal.timeout(10_000),
   });
   assert.equal(createSupport.status, 303, 'An administrator should be able to create a named support account.');
+  assertSameOriginRedirect(createSupport, 'Staff creation');
   const managedSupport = await client.query(`
     SELECT id,role,active,must_rotate_password,mfa_enabled
     FROM staff_users WHERE email=$1
@@ -314,6 +324,7 @@ try {
     signal: AbortSignal.timeout(10_000),
   });
   assert.equal(recommendationCreation.status, 303, 'A catalogue-backed personalised recommendation should be created.');
+  assertSameOriginRedirect(recommendationCreation, 'Recommendation creation');
   const storedFormulaItem = await client.query(`
     SELECT r.id recommendation_id,r.formula_id,fi.formula_ingredient_id,
            fi.inventory_item_id,fi.ingredient_name,fi.quantity,fi.unit

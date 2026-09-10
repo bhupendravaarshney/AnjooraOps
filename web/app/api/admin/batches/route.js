@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { assertExpectedState, assertTransition, lockEntity } from '@/lib/transitions';
 import { normalizeUnit, requireMatchingUnit } from '@/lib/units';
 
@@ -115,7 +114,7 @@ export async function POST(request) {
         });
         return { batch, repeated: false };
       });
-      return NextResponse.redirect(new URL(`/admin/batches?batch=${encodeURIComponent(result.batch.public_id)}`, request.url), 303);
+      return sameOriginRedirect(`/admin/batches?batch=${encodeURIComponent(result.batch.public_id)}`);
     }
 
     const batchId = String(form.get('batch_id') || '');
@@ -190,7 +189,7 @@ export async function POST(request) {
         payload: { batch_id: batchId },
       });
     });
-    return NextResponse.redirect(new URL('/admin/batches', request.url), 303);
+    return sameOriginRedirect('/admin/batches');
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

@@ -1,10 +1,9 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { queueWhatsAppText, queueWhatsAppTemplate } from '@/lib/whatsapp';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { assertExpectedState, assertTransition, lockEntity } from '@/lib/transitions';
 
 async function queueOrderNotice(db, order, { body, intent, templateName, parameters, dedupeKey }) {
@@ -143,7 +142,7 @@ export async function POST(request) {
         payload: { dispatch_id: dispatch.id, refill_id: refill.id },
       });
     });
-    return NextResponse.redirect(new URL('/admin/dispatch', request.url), 303);
+    return sameOriginRedirect('/admin/dispatch');
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

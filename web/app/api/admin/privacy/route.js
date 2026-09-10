@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 const TYPES = new Set(['ACCESS', 'CORRECTION', 'ANONYMIZATION']);
 
@@ -108,7 +107,7 @@ export async function POST(request) {
         await writeAudit(db, { request, staffId: staff.id, entityType: 'DATA_SUBJECT_REQUEST', entityId: requestId, action: 'COMPLETED', priorState: record.status, resultingState: 'COMPLETED', payload: { request_type: record.request_type, customer_id: customer.id } });
       });
     }
-    return NextResponse.redirect(new URL('/admin/privacy', request.url), 303);
+    return sameOriginRedirect('/admin/privacy');
   } catch (error) {
     if (staff) await writeAudit({ query }, { request, staffId: staff.id, entityType: 'DATA_SUBJECT_REQUEST', action, outcome: 'REJECTED', payload: { code: error.code || 'UNEXPECTED' } }).catch(() => {});
     return errorResponse(error);

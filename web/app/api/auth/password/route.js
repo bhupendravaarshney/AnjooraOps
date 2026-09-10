@@ -1,10 +1,9 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
 import { requireStaff, SESSION_COOKIE } from '@/lib/auth';
 import { withTransaction } from '@/lib/db';
 import { hashPassword, passwordPolicyError, verifyPassword } from '@/lib/security';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   try {
@@ -29,9 +28,9 @@ export async function POST(request) {
     });
     const jar = await cookies();
     jar.set(SESSION_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', expires: new Date(0) });
-    return NextResponse.redirect(new URL('/admin/login?password=changed', request.url), 303);
+    return sameOriginRedirect('/admin/login?password=changed');
   } catch (error) {
-    if (error instanceof HttpError) return NextResponse.redirect(new URL('/admin/account/password?error=1', request.url), 303);
+    if (error instanceof HttpError) return sameOriginRedirect('/admin/account/password?error=1');
     return errorResponse(error);
   }
 }

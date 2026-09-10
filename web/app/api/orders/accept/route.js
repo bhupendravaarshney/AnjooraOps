@@ -1,10 +1,9 @@
-import { NextResponse } from 'next/server';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { tokenHash } from '@/lib/security';
 import { writeAudit } from '@/lib/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
-import { HttpError, errorResponse, hashPrivateValue, requestIp, requireSameOrigin } from '@/lib/http';
+import { HttpError, errorResponse, hashPrivateValue, requestIp, requireSameOrigin, sameOriginRedirect } from '@/lib/http';
 import { assertTransition } from '@/lib/transitions';
 
 const ACCEPTANCE_TEXT = 'I accept this recommendation and the itemized order total. I understand that payment is a separate step.';
@@ -75,7 +74,7 @@ export async function POST(request) {
         payload: { acceptance_version: ACCEPTANCE_VERSION, channel: 'WEB' },
       });
     });
-    return NextResponse.redirect(new URL(`/accept/order/${encodeURIComponent(token)}?accepted=1`, request.url), 303);
+    return sameOriginRedirect(`/accept/order/${encodeURIComponent(token)}?accepted=1`);
   } catch (error) {
     return errorResponse(error);
   }

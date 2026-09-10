@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { queueWhatsAppText } from '@/lib/whatsapp';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   let staff = null;
@@ -35,7 +34,7 @@ export async function POST(request) {
         payload: { message_id: queued.messageId, delivery_status: queued.deliveryStatus },
       });
     });
-    return NextResponse.redirect(new URL(`/admin/whatsapp?conversation=${encodeURIComponent(conversationId)}`, request.url), 303);
+    return sameOriginRedirect(`/admin/whatsapp?conversation=${encodeURIComponent(conversationId)}`);
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

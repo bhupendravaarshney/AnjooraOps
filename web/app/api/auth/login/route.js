@@ -1,12 +1,11 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
 import { withTransaction } from '@/lib/db';
 import { hashPassword, verifyPassword, randomToken, tokenHash, decryptSecret, verifyTotp } from '@/lib/security';
 import { uuid } from '@/lib/ids';
 import { sessionCookieOptions } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
 import { enforceRateLimit } from '@/lib/rate-limit';
-import { errorResponse, hashPrivateValue, requestIp, requireSameOrigin } from '@/lib/http';
+import { errorResponse, hashPrivateValue, requestIp, requireSameOrigin, sameOriginRedirect } from '@/lib/http';
 
 const DUMMY_PASSWORD_HASH = hashPassword('not-a-real-password');
 
@@ -65,11 +64,11 @@ export async function POST(request) {
       await writeAudit(db, { request, staffId: user.id, entityType: 'STAFF_USER', entityId: user.id, action: 'LOGIN', resultingState: 'AUTHENTICATED', payload: { mfa: user.mfa_enabled } });
       return { ok: true, token, expiresAt, mustRotate: user.must_rotate_password, needsMfa: process.env.REQUIRE_STAFF_MFA === 'true' && !user.mfa_enabled };
     });
-    if (!result.ok) return NextResponse.redirect(new URL(`/admin/login?error=${result.error}`, request.url), 303);
+    if (!result.ok) return sameOriginRedirect(`/admin/login?error=${result.error}`);
     const jar = await cookies();
     jar.set({ ...sessionCookieOptions(result.expiresAt), value: result.token });
     const destination = result.mustRotate ? '/admin/account/password' : result.needsMfa ? '/admin/account/mfa' : '/admin';
-    return NextResponse.redirect(new URL(destination, request.url), 303);
+    return sameOriginRedirect(destination);
   } catch (error) {
     return errorResponse(error);
   }

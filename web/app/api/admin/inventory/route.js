@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { normalizeUnit } from '@/lib/units';
 
 const ACTIONS = new Set([
@@ -191,7 +190,7 @@ export async function POST(request) {
         });
       });
     }
-    return NextResponse.redirect(new URL('/admin/inventory', request.url), 303);
+    return sameOriginRedirect('/admin/inventory');
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

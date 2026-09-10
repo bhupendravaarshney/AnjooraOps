@@ -62,6 +62,27 @@ export function secureEqual(left, right) {
   return a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
 }
 
+const SAME_ORIGIN_REDIRECT_BASE = new URL('https://anjoora.invalid');
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+export function sameOriginRedirect(location, status = 303) {
+  if (!REDIRECT_STATUSES.has(status)) {
+    throw new TypeError('Redirect status must be 301, 302, 303, 307, or 308.');
+  }
+  const value = String(location || '');
+  let target;
+  try {
+    target = new URL(value, SAME_ORIGIN_REDIRECT_BASE);
+  } catch {
+    throw new TypeError('Redirect location must be a valid same-origin path.');
+  }
+  if (!value.startsWith('/') || target.origin !== SAME_ORIGIN_REDIRECT_BASE.origin) {
+    throw new TypeError('Redirect location must be a same-origin path.');
+  }
+  const relativeLocation = `${target.pathname}${target.search}${target.hash}`;
+  return new Response(null, { status, headers: { Location: relativeLocation } });
+}
+
 export function requireSameOrigin(request) {
   const origin = request.headers.get('origin');
   const requestOrigin = new URL(request.url).origin;

@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { parseFormulaIngredientSelections } from '@/lib/formula-ingredients';
 
 function text(value, field, maximum, required = false) {
@@ -182,7 +181,7 @@ export async function POST(request) {
       });
       return created;
     });
-    return NextResponse.redirect(new URL(`/admin/consultations/${consultationId}?recommendation=${recommendation.public_id}`, request.url), 303);
+    return sameOriginRedirect(`/admin/consultations/${consultationId}?recommendation=${recommendation.public_id}`);
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {

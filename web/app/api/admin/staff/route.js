@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 import { hashPassword, passwordPolicyError } from '@/lib/security';
 import { normalizeStaffEmail, normalizeStaffName, normalizeStaffRole } from '@/lib/staff-policy';
 
@@ -101,7 +100,7 @@ export async function POST(request) {
       return { status: 'deactivated' };
     });
 
-    return NextResponse.redirect(new URL(`/admin/staff?status=${result.status}`, request.url), 303);
+    return sameOriginRedirect(`/admin/staff?status=${result.status}`);
   } catch (error) {
     if (administrator) {
       await writeAudit({ query }, {

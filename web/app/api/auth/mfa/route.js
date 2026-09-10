@@ -1,9 +1,8 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { withTransaction } from '@/lib/db';
 import { decryptSecret, encryptSecret, verifyPassword, verifyTotp } from '@/lib/security';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   try {
@@ -34,9 +33,9 @@ export async function POST(request) {
         await writeAudit(db, { request, staffId: staff.id, entityType: 'STAFF_USER', entityId: staff.id, action: 'MFA_DISABLED' });
       }
     });
-    return NextResponse.redirect(new URL('/admin', request.url), 303);
+    return sameOriginRedirect('/admin');
   } catch (error) {
-    if (error instanceof HttpError) return NextResponse.redirect(new URL('/admin/account/mfa?error=1', request.url), 303);
+    if (error instanceof HttpError) return sameOriginRedirect('/admin/account/mfa?error=1');
     return errorResponse(error);
   }
 }

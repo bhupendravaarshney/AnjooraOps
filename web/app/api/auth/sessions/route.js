@@ -1,8 +1,7 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { withTransaction } from '@/lib/db';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse } from '@/lib/http';
+import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   try {
@@ -17,7 +16,7 @@ export async function POST(request) {
       await db.query(`DELETE FROM sessions WHERE id=$1`, [sessionId]);
       await writeAudit(db, { request, staffId: staff.id, entityType: 'STAFF_USER', entityId: session.staff_user_id, action: 'SESSION_REVOKED', payload: { session_id: sessionId } });
     });
-    return NextResponse.redirect(new URL('/admin/account/sessions', request.url), 303);
+    return sameOriginRedirect('/admin/account/sessions');
   } catch (error) {
     return errorResponse(error);
   }

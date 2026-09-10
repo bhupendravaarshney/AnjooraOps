@@ -1,10 +1,9 @@
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
 import { withTransaction } from '@/lib/db';
 import { tokenHash } from '@/lib/security';
 import { SESSION_COOKIE } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
-import { errorResponse, requireSameOrigin } from '@/lib/http';
+import { errorResponse, requireSameOrigin, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   try {
@@ -21,7 +20,7 @@ export async function POST(request) {
       });
     }
     jar.set(SESSION_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', expires: new Date(0) });
-    return NextResponse.redirect(new URL('/admin/login', request.url), 303);
+    return sameOriginRedirect('/admin/login');
   } catch (error) {
     return errorResponse(error);
   }

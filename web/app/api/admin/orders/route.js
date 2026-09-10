@@ -1,11 +1,10 @@
-import { NextResponse } from 'next/server';
 import { requireStaff } from '@/lib/auth';
 import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { randomToken, tokenHash } from '@/lib/security';
 import { queueWhatsAppText } from '@/lib/whatsapp';
 import { writeAudit } from '@/lib/audit';
-import { HttpError, errorResponse, hashPrivateValue } from '@/lib/http';
+import { HttpError, errorResponse, hashPrivateValue, sameOriginRedirect } from '@/lib/http';
 import { assertExpectedState, assertTransition, lockEntity } from '@/lib/transitions';
 
 function money(value, field, { required = false } = {}) {
@@ -57,7 +56,7 @@ export async function POST(request) {
           },
         });
       });
-      return NextResponse.redirect(new URL('/admin/orders', request.url), 303);
+      return sameOriginRedirect('/admin/orders');
     }
 
     if (action === 'mark_paid') {
@@ -98,7 +97,7 @@ export async function POST(request) {
           payload: { payment_intent_id: intent.id, reference_hash: hashPrivateValue(reference) },
         });
       });
-      return NextResponse.redirect(new URL('/admin/orders', request.url), 303);
+      return sameOriginRedirect('/admin/orders');
     }
 
     if (action === 'ready') {
@@ -152,7 +151,7 @@ export async function POST(request) {
           payload: { inventory_transaction_id: transactionId },
         });
       });
-      return NextResponse.redirect(new URL('/admin/orders', request.url), 303);
+      return sameOriginRedirect('/admin/orders');
     }
 
     const recommendationId = String(form.get('recommendation_id') || '');
@@ -234,7 +233,7 @@ export async function POST(request) {
       });
       return { order, repeated: false };
     });
-    return NextResponse.redirect(new URL(`/admin/orders?created=${encodeURIComponent(result.order.public_id)}`, request.url), 303);
+    return sameOriginRedirect(`/admin/orders?created=${encodeURIComponent(result.order.public_id)}`);
   } catch (error) {
     if (staff) {
       await writeAudit({ query }, {
