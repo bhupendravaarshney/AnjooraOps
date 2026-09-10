@@ -4,13 +4,15 @@ import { normalizePhone } from '@/lib/phone';
 import { verifyMetaSignature } from '@/lib/security';
 import { ensureConversation } from '@/lib/bot';
 import { enqueueOutbox } from '@/lib/outbox';
+import { secureEqual } from '@/lib/http';
+import { metaWebhookValues, valueBelongsToConfiguredPhone } from '@/lib/meta-webhook';
 
 export async function GET(request) {
   const url = new URL(request.url);
   const mode = url.searchParams.get('hub.mode');
   const token = url.searchParams.get('hub.verify_token');
   const challenge = url.searchParams.get('hub.challenge');
-  if (mode === 'subscribe' && token && token === process.env.WHATSAPP_VERIFY_TOKEN) {
+  if (mode === 'subscribe' && token && secureEqual(token, process.env.WHATSAPP_VERIFY_TOKEN)) {
     return new Response(challenge || '', { status: 200 });
   }
   return new Response('Forbidden', { status: 403 });
@@ -114,13 +116,21 @@ export async function POST(request) {
   } catch {
     return new Response('Invalid JSON', { status: 400 });
   }
-  const values = payload?.entry?.flatMap((entry) => entry.changes || []).map((change) => change.value).filter(Boolean) || [];
+  const values = metaWebhookValues(payload);
+  if (!values.length && payload?.object !== 'whatsapp_business_account') {
+    return Response.json({ received: false, error: 'Unsupported webhook object.' }, { status: 422 });
+  }
   let stored = 0;
   let duplicates = 0;
   let invalid = 0;
   let statuses = 0;
+  let ignoredPhoneNumbers = 0;
 
   for (const value of values) {
+    if (!valueBelongsToConfiguredPhone(value, process.env.WHATSAPP_PHONE_NUMBER_ID)) {
+      ignoredPhoneNumbers += (value?.messages?.length || 0) + (value?.statuses?.length || 0) || 1;
+      continue;
+    }
     statuses += await storeStatuses(value);
     for (const message of value?.messages || []) {
       const result = await storeInbound(value, message);
@@ -129,5 +139,5 @@ export async function POST(request) {
       else invalid += 1;
     }
   }
-  return Response.json({ received: true, stored, duplicates, invalid, statuses });
+  return Response.json({ received: true, stored, duplicates, invalid, statuses, ignored_phone_numbers: ignoredPhoneNumbers });
 }

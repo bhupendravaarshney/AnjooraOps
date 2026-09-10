@@ -10,6 +10,14 @@ export class ConsultationInputError extends Error {
 export const CONSENT_VERSION = '2026-09-v1';
 export const CONSENT_TEXT = 'I consent to ANJOORA using these details to contact me on WhatsApp for human review, recommendation, acceptance and payment communication. I understand that submitting this consultation does not place an order or make a payment.';
 
+export function consultationConsentPolicy() {
+  const version = String(process.env.CONSULTATION_CONSENT_VERSION || CONSENT_VERSION).trim();
+  const text = String(process.env.CONSULTATION_CONSENT_TEXT || CONSENT_TEXT).trim();
+  if (!/^[A-Za-z0-9._-]{3,80}$/.test(version)) throw new Error('CONSULTATION_CONSENT_VERSION is invalid.');
+  if (text.length < 40 || text.length > 1000) throw new Error('CONSULTATION_CONSENT_TEXT must contain 40-1000 characters.');
+  return { version, text };
+}
+
 export const CONCERN_LABELS = Object.freeze([
   'Calm',
   'Sleep',
@@ -31,7 +39,7 @@ const allowedFields = new Set([
   'appetite_digestion', 'body_climate', 'energy_pattern', 'meal_rhythm', 'sleep_rhythm',
   'realistic_rituals', 'stress_response', 'emotional_support', 'change_style', 'preferred_format',
   'safety_flags', 'safety', 'questionnaire_version', 'safety_screen_version',
-  'consent', 'consent_accepted', 'submission_id', 'anti_bot_token',
+  'consent', 'consent_accepted', 'consent_version', 'submission_id', 'anti_bot_token',
 ]);
 
 const allowedLanguages = new Map(['English', 'Hindi', 'Hinglish'].map((value) => [value.toLowerCase(), value]));
@@ -255,6 +263,11 @@ export function normalizeConsultationPayload(input) {
   if (input.consent !== true && input.consent_accepted !== true) {
     throw new ConsultationInputError('Consent is required before submission.');
   }
+  const consentPolicy = consultationConsentPolicy();
+  const consentVersion = cleanText(input.consent_version, 'consent_version', 80);
+  if (consentVersion !== consentPolicy.version) {
+    throw new ConsultationInputError('The consent text changed. Reload the page and review the current consent before submitting.');
+  }
 
   const context = normalizeConsultationContext(input);
   const languageRaw = optionalText(input, 'language', 20);
@@ -299,5 +312,6 @@ export function normalizeConsultationPayload(input) {
     preferredFormat: allowedValue(format, 'preferred format', allowedFormats),
     questionnaireVersion,
     safetyScreenVersion,
+    consentVersion,
   };
 }

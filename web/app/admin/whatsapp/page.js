@@ -8,7 +8,7 @@ import { encodeCursor, parseCursor, searchTerm } from '@/lib/pagination';
 export const dynamic = 'force-dynamic';
 
 export default async function WhatsApp({ searchParams }) {
-  const staff = await requireStaff({ roles: ['SUPPORT', 'VAIDYA'] });
+  const staff = await requireStaff({ capability: 'WHATSAPP' });
   const sp = await searchParams;
   const search = searchTerm(sp?.q);
   const cursor = parseCursor(sp?.cursor);

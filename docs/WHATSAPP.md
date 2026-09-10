@@ -22,6 +22,7 @@ GET/POST https://YOUR_DOMAIN/api/webhooks/whatsapp
 
 - GET verification checks `WHATSAPP_VERIFY_TOKEN`.
 - POST bodies are limited to 1 MiB and verified with `WHATSAPP_APP_SECRET`.
+- Message/status changes are processed only when `metadata.phone_number_id` matches the configured production phone-number ID.
 - `meta_message_id` is unique. A replay is acknowledged but does not invoke the bot or queue another reply.
 - Bot processing receives the exact stored message ID and records `QUEUED`, `PROCESSING`, `PROCESSED`, or `FAILED`.
 - Meta `sent`, `delivered`, `read`, and `failed` callbacks update the exact outbound message. Terminal delivered/read states are not downgraded by older events.
@@ -75,10 +76,12 @@ The order duration determines the refill due date. The single `REFILL_REMINDER_D
 
 Before enabling the webhook:
 
-1. Set all required Meta values together: verify token, app secret, permanent access token, phone-number ID, and Graph version.
+1. Set all required Meta values together: verify token, app secret, permanent access token, phone-number ID, WhatsApp Business Account ID, and Graph version.
 2. Verify the callback challenge and a valid signature; confirm an invalid signature returns 401.
 3. Send the same inbound event twice and confirm one inbound row and one bot job.
 4. Process the outbox and confirm sent/delivered/read states.
 5. Test a deliberate delivery failure, retry visibility, and final `DEAD` alerting.
 6. Test each approved proactive template using the production phone-number ID.
 7. Monitor the schedules and thresholds in [OPERATIONS_RUNBOOK.md](OPERATIONS_RUNBOOK.md).
+
+`GO_LIVE=true` refuses incomplete Meta credentials and requires approved dispatch, delivery, and refill template names. It also rejects any populated sensitive `NEXT_PUBLIC_*` token/secret variable. Actual Business portfolio connection, webhook subscription, template approval, and phone tests must be completed in Meta and referenced in the private release evidence.

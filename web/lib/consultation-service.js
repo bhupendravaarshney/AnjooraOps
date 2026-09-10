@@ -1,11 +1,11 @@
 import { withTransaction } from '@/lib/db';
 import { uuid, publicId, withPublicIdRetry } from '@/lib/ids';
 import { buildFolio, buildWhatsAppHandoff } from '@/lib/folio';
-import { CONSENT_TEXT, CONSENT_VERSION } from '@/lib/consultation-input';
+import { consultationConsentPolicy } from '@/lib/consultation-input';
 import { writeAudit } from '@/lib/audit';
 import { normalizePhone } from '@/lib/phone';
 
-function publicResponse({ customer, consultation, reviewCase, conversation, context, folioText }) {
+function publicResponse({ customer, consultation, reviewCase, conversation, context, folioText, consentPolicy }) {
   const handoff = buildWhatsAppHandoff({
     folioId: consultation.folio_id,
     name: customer.name,
@@ -36,13 +36,14 @@ function publicResponse({ customer, consultation, reviewCase, conversation, cont
       urgent: context.safety.urgent,
       flags: context.safety.flags.map((flag) => flag.code),
     },
-    consent_version: CONSENT_VERSION,
+    consent_version: consentPolicy.version,
     folio_text: folioText,
     whatsapp_url: whatsappUrl,
   };
 }
 
 export async function submitConsultation({ input, normalized, request, sourceIpHash, correlation }) {
+  const consentPolicy = consultationConsentPolicy();
   return withPublicIdRetry(() => withTransaction(async (db) => {
     await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [normalized.submissionId]);
     const replay = await db.query(`
@@ -80,7 +81,7 @@ export async function submitConsultation({ input, normalized, request, sourceIpH
       whatsapp: normalized.phone,
       consent_text: undefined,
       anti_bot_token: undefined,
-      consent_version: CONSENT_VERSION,
+      consent_version: consentPolicy.version,
     };
     const folioText = buildFolio({
       name: normalized.name,
@@ -108,7 +109,7 @@ export async function submitConsultation({ input, normalized, request, sourceIpH
       safety_review_required: normalized.context.safety.reviewRequired,
       urgent_safety_flag: normalized.context.safety.urgent,
       safety_screen_version: normalized.safetyScreenVersion,
-      consent_text: CONSENT_TEXT,
+      consent_text: consentPolicy.text,
     });
 
     await db.query(`
@@ -130,9 +131,9 @@ export async function submitConsultation({ input, normalized, request, sourceIpH
       normalized.energyPattern, normalized.mealRhythm, normalized.sleepRhythm,
       JSON.stringify(normalized.realisticRituals), normalized.stressResponse,
       normalized.emotionalSupport, normalized.changeStyle, normalized.preferredFormat,
-      normalized.questionnaireVersion, JSON.stringify(safePayload), CONSENT_TEXT, folioText,
+      normalized.questionnaireVersion, JSON.stringify(safePayload), consentPolicy.text, folioText,
       normalized.context.safety.reviewRequired, normalized.context.safety.urgent,
-      normalized.safetyScreenVersion, normalized.submissionId, CONSENT_VERSION, sourceIpHash,
+      normalized.safetyScreenVersion, normalized.submissionId, consentPolicy.version, sourceIpHash,
     ]);
 
     for (const item of normalized.context.concerns) {
@@ -178,6 +179,7 @@ export async function submitConsultation({ input, normalized, request, sourceIpH
       conversation,
       context: normalized.context,
       folioText,
+      consentPolicy,
     });
     await db.query(`UPDATE consultations SET submission_response=$1::jsonb WHERE id=$2`, [JSON.stringify(response), consultation.id]);
     await writeAudit(db, {
@@ -193,7 +195,7 @@ export async function submitConsultation({ input, normalized, request, sourceIpH
         source: 'anjoora-server',
         concerns: normalized.context.concerns.map((item) => ({ key: item.key, primary: item.isPrimary, position: item.position })),
         safety_outcome: normalized.context.safety.outcome,
-        consent_version: CONSENT_VERSION,
+        consent_version: consentPolicy.version,
       },
     });
 

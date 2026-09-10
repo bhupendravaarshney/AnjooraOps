@@ -12,7 +12,7 @@ For step-by-step customer and staff instructions, see the [English and Hindi use
 - Vaidya review queue with clarification, hold, close and recommendation actions.
 - Two-way WhatsApp conversation storage and bot routing through Meta WhatsApp Cloud API.
 - Human handoff for personal recommendation/formulation questions.
-- Standard product and personalised formula records with version-ready schema.
+- Standard product and personalised formula records with a database-backed formula ingredient catalogue.
 - Itemized order quote, customer acceptance evidence, payment intent, signed payment webhook, and manual reconciliation fallback.
 - Simple raw-material inventory ledger.
 - Batch creation and inventory consumption on batch completion.
@@ -20,7 +20,7 @@ For step-by-step customer and staff instructions, see the [English and Hindi use
 - Dispatch, AWB and delivered state.
 - Delivery-triggered refill timing.
 - Refill choices: same, modify, stop.
-- Role-based staff access, throttled login, forced password rotation, authenticator MFA, and session management.
+- Role-based staff access, an admin-only Staff screen, throttled login, forced password rotation, authenticator MFA, and session management.
 - Cursor search/pagination, verified privacy requests, configurable retention, audit coverage, and a durable message outbox.
 - Docker Compose, Dockerfile and Railway config.
 
@@ -90,11 +90,15 @@ cp .env.example .env
 
 For production, explicitly choose `PAYMENT_PROVIDER=MANUAL` or configure the external payment URL and webhook secret. Meta Cloud API values are optional as a group, but partial Meta configuration is rejected.
 
+Keep `GO_LIVE=false` while provisioning. The final `GO_LIVE=true` validation is intentionally stricter: it rejects bootstrap credentials, manual payments, incomplete Meta/WABA configuration, missing approved templates/event mappings, absent recovery objectives, and unapproved privacy/consent settings.
+
 3. Start:
 
 ```bash
 docker compose up --build
 ```
+
+Compose also starts a local-only scheduler that runs the outbox every minute and the refill/maintenance jobs daily. The scheduler refuses `GO_LIVE=true`; production still requires the approved external scheduler and alerting service.
 
 4. Open:
 
@@ -253,6 +257,8 @@ Use the same value for Meta webhook verification token and `WHATSAPP_VERIFY_TOKE
 
 Subscribe the WhatsApp Business Account to incoming message/webhook events.
 
+Set `WHATSAPP_BUSINESS_ACCOUNT_ID` as part of the complete production credential group. Signed events for a different phone-number ID are acknowledged but ignored, preventing another number attached to the same Meta app from entering this workflow.
+
 For proactive dispatch, delivery or refill reminders, configure approved WhatsApp message-template names in the template environment variables. The supplied parameters are documented in `docs/WHATSAPP.md`.
 
 ### v1 bot intents
@@ -300,7 +306,41 @@ Authorization: Bearer YOUR_CRON_SECRET
 
 See `docs/OPERATIONS_RUNBOOK.md` for alerts, retention, backup, and restore-drill procedures.
 
+Scheduler services can use the supplied commands; they read `APP_URL` and send `CRON_SECRET` only in the authorization header:
+
+```bash
+npm run job:outbox
+npm run job:refills
+npm run job:maintenance
+npm run ops:status
+```
+
+Every execution is recorded in `operational_job_runs`. The protected status check returns HTTP 503 for overdue jobs, dead/delayed outbox work, persistent WhatsApp failures, unresolved payment review, low stock, or stalled job runs.
+
 ## Admin workflow
+
+### Staff accounts
+
+Administrators can open `/admin/staff` to create named accounts, assign roles, reset temporary passwords, and deactivate accounts. Creating or resetting an account forces password rotation; changing a role, resetting a password, or deactivating an account revokes its active sessions. `SUPPORT` is limited to the Dashboard and WhatsApp tabs, and protected APIs enforce the same restriction.
+
+Use the CLI for approved recovery operations and the exact production staff-register audit. It is also available for scripted account administration:
+
+Set `STAFF_OPERATOR` to the named administrator for every mutating action. Inject `STAFF_PASSWORD` through the approved secret mechanism before a password-bearing action; do not put a real password in shell history. Recovery also requires `STAFF_RECOVERY_APPROVAL_REF` so its approval is preserved in the audit event.
+
+```bash
+STAFF_OPERATOR="Named Administrator" STAFF_ACTION=create STAFF_EMAIL=person@company.tld STAFF_NAME="Named Person" STAFF_ROLE=SUPPORT STAFF_PASSWORD="$INJECTED_TEMPORARY_PASSWORD" npm run staff:manage
+STAFF_OPERATOR="Named Administrator" STAFF_ACTION=update STAFF_EMAIL=person@company.tld STAFF_NAME="Named Person" STAFF_ROLE=OPERATIONS npm run staff:manage
+STAFF_OPERATOR="Named Administrator" STAFF_ACTION=reset STAFF_EMAIL=person@company.tld STAFF_PASSWORD="$INJECTED_TEMPORARY_PASSWORD" npm run staff:manage
+STAFF_OPERATOR="Named Administrator" STAFF_RECOVERY_APPROVAL_REF="approval/ANJ-123" STAFF_ACTION=recover STAFF_EMAIL=person@company.tld STAFF_PASSWORD="$INJECTED_TEMPORARY_PASSWORD" npm run staff:manage
+STAFF_OPERATOR="Named Administrator" STAFF_ACTION=deactivate STAFF_EMAIL=person@company.tld npm run staff:manage
+STAFF_ACTION=list npm run staff:manage
+```
+
+`recover` revokes sessions, replaces the password, clears the old authenticator, and forces password rotation plus new MFA enrollment. When MFA is mandatory it cannot be self-disabled. For the production audit, copy `docs/staff-register.example.json` to the approved private evidence store, list every expected active account, and run:
+
+```bash
+STAFF_ACTION=audit STAFF_REGISTER_FILE=/secure/path/staff-register.json npm run staff:manage
+```
 
 ### Consultations
 
@@ -325,17 +365,9 @@ Inside consultation detail:
 - choose standard product or personalised formula
 - set duration
 - enter usage instructions
-- enter formula ingredients
+- for a personalised formula, select each ingredient from the database-backed dropdown and enter its quantity
 
-Ingredient format:
-
-```text
-SKU | Name | Qty | Unit
-RM-ASHWAGANDHA | Ashwagandha | 30 | g
-RM-BRAHMI | Brahmi | 20 | g
-```
-
-If the SKU exists in inventory, it is linked for batch consumption.
+The dropdown contains only active entries from the formula ingredient catalogue. Displayed SKU/name/unit values are read from the database; the selected catalogue and inventory identities plus the name/unit snapshot are stored rather than accepting ingredient details as free text.
 
 ### Orders
 
@@ -348,6 +380,7 @@ A current approved recommendation can be converted to an itemized order from the
 Supports:
 
 - create/update inventory item
+- map an inventory item into the active formula ingredient catalogue, rename its catalogue label, or deactivate it
 - stock receipt
 - signed adjustment
 - calculated available stock from the inventory ledger
@@ -439,6 +472,23 @@ Before live customer use:
 - run an isolated restore drill and record the evidence
 - connect the existing ANJOORA questionnaire to the consultation API
 - review privacy notice/consent wording for the production jurisdiction and actual data use
+
+## Final release audit
+
+The customer site obtains the current consent text/version from `GET /api/v1/consent`; submissions with an older version are rejected. Set the approved `CONSULTATION_CONSENT_*`, privacy approval, verification-method, retention, RPO, and RTO values before enabling go-live mode.
+
+For a provider-managed restore, restore into an isolated database and run `npm run ops:restore-validate` with the documented `RESTORE_*` evidence variables. This is separate from the local Compose `npm run ops:restore-test` drill.
+
+Copy `docs/release-evidence.example.json` to the approved private evidence store and attach dated evidence/owners for every check. The final command combines strict configuration validation, verified-TLS database access, migration checks, exact staff-register/MFA validation, job freshness, alert backlog checks, and required sign-offs:
+
+```bash
+GO_LIVE=true \
+STAFF_REGISTER_FILE=/secure/path/staff-register.json \
+RELEASE_EVIDENCE_FILE=/secure/path/release-evidence.json \
+npm run release:audit
+```
+
+The templates contain deliberately failing placeholder values. Production activation is not complete until this command passes against the real staging/production configuration and database.
 
 ## Files to read next
 

@@ -12,6 +12,9 @@ export async function POST(request) {
     const action = String(form.get('action') || '');
     const code = String(form.get('code') || '');
     if (!['enable', 'disable'].includes(action)) throw new HttpError(422, 'Unsupported MFA action.', 'UNKNOWN_ACTION');
+    if (action === 'disable' && process.env.REQUIRE_STAFF_MFA === 'true') {
+      throw new HttpError(409, 'MFA is required for staff accounts. Use the audited account-recovery procedure to replace an authenticator.', 'MFA_REQUIRED');
+    }
     await withTransaction(async (db) => {
       const user = (await db.query(`SELECT * FROM staff_users WHERE id=$1 FOR UPDATE`, [staff.id])).rows[0];
       if (action === 'enable') {

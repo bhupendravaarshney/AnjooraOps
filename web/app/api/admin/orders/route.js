@@ -27,11 +27,37 @@ export async function POST(request) {
   let staff = null;
   let action = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request, roles: ['OPERATIONS'] });
+    staff = await requireStaff({ request, capability: 'OPERATIONS' });
     const form = await request.formData();
     action = String(form.get('action') || 'create').trim().toLowerCase();
-    if (!['create', 'ready', 'mark_paid'].includes(action)) {
+    if (!['create', 'ready', 'mark_paid', 'review_payment_event'].includes(action)) {
       throw new HttpError(422, 'Unsupported order action.', 'UNKNOWN_ACTION');
+    }
+
+    if (action === 'review_payment_event') {
+      if (staff.role !== 'ADMIN') throw new HttpError(403, 'Only an administrator can resolve a payment event review.', 'FORBIDDEN');
+      const eventId = String(form.get('payment_event_id') || '');
+      const note = String(form.get('review_note') || '').trim();
+      if (!eventId || note.length < 5 || note.length > 500) {
+        throw new HttpError(422, 'Payment event and a 5-500 character review note are required.', 'VALIDATION_ERROR');
+      }
+      await withTransaction(async (db) => {
+        const event = (await db.query(`SELECT * FROM payment_events WHERE id=$1 FOR UPDATE`, [eventId])).rows[0];
+        if (!event) throw new HttpError(404, 'Payment event not found.', 'NOT_FOUND');
+        if (event.processing_outcome !== 'REVIEW_REQUIRED') throw new HttpError(409, 'Payment event does not require review.', 'INVALID_STATE');
+        if (event.reviewed_at) return;
+        await db.query(`
+          UPDATE payment_events SET reviewed_at=now(),reviewed_by=$1,review_note=$2 WHERE id=$3
+        `, [staff.id, note, eventId]);
+        await writeAudit(db, {
+          request, staffId: staff.id, entityType: 'ORDER', entityId: event.order_id,
+          action: 'PAYMENT_EVENT_REVIEWED', payload: {
+            payment_event_id: event.id, canonical_status: event.canonical_status,
+            review_note: note,
+          },
+        });
+      });
+      return NextResponse.redirect(new URL('/admin/orders', request.url), 303);
     }
 
     if (action === 'mark_paid') {
@@ -60,6 +86,12 @@ export async function POST(request) {
           ON CONFLICT(provider,provider_event_id) DO NOTHING
         `, [uuid(), `manual:${orderId}:${reference}`, intent.id, orderId, JSON.stringify({ reference })]);
         await db.query(`UPDATE orders SET status='PAID',payment_status='PAID',updated_at=now() WHERE id=$1`, [orderId]);
+        await db.query(`
+          UPDATE payment_events
+          SET reviewed_at=COALESCE(reviewed_at,now()),reviewed_by=COALESCE(reviewed_by,$1),
+              review_note=COALESCE(review_note,'Resolved by independently verified manual reconciliation')
+          WHERE order_id=$2 AND processing_outcome='REVIEW_REQUIRED' AND reviewed_at IS NULL
+        `, [staff.id, orderId]);
         await writeAudit(db, {
           request, staffId: staff.id, entityType: 'ORDER', entityId: orderId,
           action: 'PAYMENT_MANUALLY_RECONCILED', priorState: order.status, resultingState: 'PAID',

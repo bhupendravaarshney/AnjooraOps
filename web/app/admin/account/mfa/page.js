@@ -16,11 +16,13 @@ export default async function MfaPage({ searchParams }) {
     {params?.error && <div className="error">The authenticator code could not be verified.</div>}
     {staff.mfa_enabled ? <>
       <div className="notice">Authenticator MFA is enabled.</div>
+      {process.env.REQUIRE_STAFF_MFA === 'true' ?
+        <p className="muted">MFA is mandatory. If you lose the authenticator, an administrator must use the audited account-recovery procedure.</p> :
       <form action="/api/auth/mfa" method="post" className="stack"><input type="hidden" name="action" value="disable"/>
         <div className="field"><label>Current password</label><input type="password" name="password" required autoComplete="current-password"/></div>
         <div className="field"><label>Current authenticator code</label><input name="code" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required/></div>
         <button className="btn danger">Disable MFA</button>
-      </form>
+      </form>}
     </> : <>
       <p>Add this account in an authenticator app using the setup key or the URI, then enter the current six-digit code.</p>
       <div className="notice"><strong>Setup key</strong><br/><code>{secret}</code></div>

@@ -1,4 +1,5 @@
 import { requireStaff } from '@/lib/auth';
+import { roleCan } from '@/lib/rbac';
 import { query } from '@/lib/db';
 import AdminShell from '@/app/components/AdminShell';
 import Status from '@/app/components/Status';
@@ -14,9 +15,9 @@ function SafetyStatus({ reviewRequired, urgent }) {
 
 export default async function Dashboard() {
   const staff = await requireStaff();
-  const mayReview = ['ADMIN', 'VAIDYA'].includes(staff.role);
-  const mayOperate = ['ADMIN', 'OPERATIONS'].includes(staff.role);
-  const maySupport = ['ADMIN', 'VAIDYA', 'SUPPORT'].includes(staff.role);
+  const mayReview = roleCan(staff.role, 'CLINICAL_REVIEW');
+  const mayOperate = roleCan(staff.role, 'OPERATIONS');
+  const maySupport = roleCan(staff.role, 'WHATSAPP');
   const reminderDays = refillReminderDays();
   const [newCases, orders, batches, refills, handoffs, latest] = await Promise.all([
     mayReview ? query(`SELECT count(*)::int n FROM review_cases WHERE status IN ('NEW','CLARIFICATION_REQUIRED','READY_FOR_RECOMMENDATION')`) : null,

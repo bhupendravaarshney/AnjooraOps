@@ -1,6 +1,6 @@
 import { withTransaction } from '@/lib/db';
 import { writeAudit } from '@/lib/audit';
-import { secureEqual } from '@/lib/http';
+import { cronAuthorized, runOperationalJob } from '@/lib/jobs';
 
 function days(name, fallback, minimum = 1, maximum = 3650) {
   const value = Number(process.env[name] || fallback);
@@ -8,9 +8,7 @@ function days(name, fallback, minimum = 1, maximum = 3650) {
 }
 
 export async function POST(request) {
-  const authorization = request.headers.get('authorization');
-  const expected = process.env.CRON_SECRET ? `Bearer ${process.env.CRON_SECRET}` : '';
-  if (!expected || !secureEqual(authorization, expected)) return new Response('Unauthorized', { status: 401 });
+  if (!cronAuthorized(request)) return new Response('Unauthorized', { status: 401 });
   const settings = {
     consultationRawDays: days('CONSULTATION_RAW_PAYLOAD_DAYS', 30),
     whatsappRawDays: days('WHATSAPP_RAW_PAYLOAD_DAYS', 30),
@@ -18,10 +16,12 @@ export async function POST(request) {
     paymentRawDays: days('PAYMENT_RAW_PAYLOAD_DAYS', 30),
     rateLimitDays: days('RATE_LIMIT_EVENT_DAYS', 2),
     outboxDays: days('OUTBOX_RETENTION_DAYS', 365, 30),
+    jobRunDays: days('JOB_RUN_RETENTION_DAYS', 90, 7),
     auditDays: days('AUDIT_RETENTION_DAYS', 2555, 365),
     customerRecordDays: days('CUSTOMER_RECORD_RETENTION_DAYS', 2555, 365),
   };
-  const result = await withTransaction(async (db) => {
+  try {
+    const result = await runOperationalJob('maintenance', () => withTransaction(async (db) => {
     const sessions = await db.query(`DELETE FROM sessions WHERE expires_at<=now()`);
     const limits = await db.query(`DELETE FROM rate_limit_events WHERE created_at<now()-($1 * interval '1 day')`, [settings.rateLimitDays]);
     const consultations = await db.query(`
@@ -57,6 +57,11 @@ export async function POST(request) {
       DELETE FROM message_outbox
       WHERE status IN ('SENT','DEAD') AND updated_at<now()-($1 * interval '1 day')
     `, [settings.outboxDays]);
+    const jobRuns = await db.query(`
+      DELETE FROM operational_job_runs
+      WHERE status IN ('SUCCEEDED','FAILED')
+        AND completed_at<now()-($1 * interval '1 day')
+    `, [settings.jobRunDays]);
     const audits = await db.query(`
       WITH held_entities AS (
         SELECT id FROM customers WHERE legal_hold=true
@@ -89,11 +94,16 @@ export async function POST(request) {
       consultation_payloads: consultations.rowCount, message_payloads: messages.rowCount,
       message_bodies: messageBodies.rowCount,
       payment_payloads: payments.rowCount, payment_intent_payloads: paymentIntents.rowCount,
-      outbox_jobs: outbox.rowCount, audit_events: audits.rowCount,
+      outbox_jobs: outbox.rowCount, operational_job_runs: jobRuns.rowCount,
+      audit_events: audits.rowCount,
       customer_records_due_for_review: lifecycleReview.rows[0].count,
     };
     await writeAudit(db, { request, entityType: 'SYSTEM', action: 'MAINTENANCE_COMPLETED', payload: { counts, settings } });
     return counts;
-  });
-  return Response.json({ ok: true, purged: result });
+    }));
+    return Response.json({ ok: true, purged: result });
+  } catch (error) {
+    console.error('Maintenance job failed', error);
+    return Response.json({ ok: false, error: 'Maintenance job failed.' }, { status: 500 });
+  }
 }

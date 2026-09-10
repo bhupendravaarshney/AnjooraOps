@@ -9,7 +9,7 @@ function valid(overrides = {}) {
     language: 'Hinglish', best_time_to_message: 'Afternoon',
     primary_concern: 'Sleep', concerns: ['Calm', 'Sleep'],
     preferred_format: 'Botanical infusion', safety_flags: ['none'],
-    questionnaire_version: '1.0', safety_screen_version: '1.0', consent: true,
+    questionnaire_version: '1.0', safety_screen_version: '1.0', consent: true, consent_version: CONSENT_VERSION,
     ...overrides,
   };
 }
@@ -26,6 +26,7 @@ test('normalizes the integrated Anjoora payload', () => {
 
 test('requires server-supported schema, consent and versions', () => {
   assert.throws(() => normalizeConsultationPayload(valid({ consent: false })), /Consent/);
+  assert.throws(() => normalizeConsultationPayload(valid({ consent_version: 'old-policy' })), /consent text changed/i);
   assert.throws(() => normalizeConsultationPayload(valid({ questionnaire_version: '9.0' })), /Unsupported questionnaire/);
   assert.throws(() => normalizeConsultationPayload(valid({ injected: 'value' })), /Unexpected field/);
 });

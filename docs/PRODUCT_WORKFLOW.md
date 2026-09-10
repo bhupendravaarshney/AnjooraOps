@@ -19,8 +19,8 @@ The verified build completed with the following results:
 - dependency installation completed with no reported vulnerabilities
 - the Next.js production build compiled successfully
 - TypeScript validation passed
-- all application routes compiled and 28 page-data targets were generated
-- 23 focused unit tests passed
+- all application routes compiled and 29 page-data targets were generated
+- 58 focused unit tests passed
 - clean-database migration, constraint, immutable-ledger, and concurrent-stock integration checks passed
 
 ### Local environment
@@ -51,7 +51,7 @@ On the first launch, Docker Compose:
 2. builds the Next.js application image
 3. creates the PostgreSQL data volume
 4. waits for PostgreSQL to become healthy
-5. applies ordered database migrations `001` through `006` under an advisory lock
+5. applies ordered database migrations `001` through `010` under an advisory lock
 6. creates the bootstrap administrator
 7. starts the application on port `3000`
 
@@ -172,7 +172,7 @@ Incoming WhatsApp number
 4. WhatsApp Conversation + Messages
 5. Recommendation
 6. Product
-7. Formula + Formula Items
+7. Formula + Formula Ingredient Catalogue + Formula Items
 8. Order + Order Items
 9. Inventory Item + Transactions
 10. Batch + Batch Items
@@ -210,10 +210,13 @@ The system may organize data and status, but a human Vaidya owns recommendation/
 - Every workflow mutation checks the expected current state while holding a row lock.
 - A current approved recommendation creates at most one initial order; each refill creates at most one next order.
 - Customer acceptance and payment are distinct. Production or stock allocation requires `PAID`.
+- A database trigger also blocks fulfilment states unless `payment_status=PAID`; provider-event mismatches become auditable review work and delayed failures cannot downgrade paid fulfilment.
+- Personalised recommendation ingredients are selected from the active database catalogue; the server supplies their inventory identity, SKU, name, and canonical unit.
 - Personalised batch quantity comes from the order and applies explicit wastage. All ingredients must map to matching canonical inventory units.
 - Inventory balances are protected against concurrent negative consumption, and ledger entries cannot be edited or deleted.
 - Inbound Meta IDs and outbound event keys are unique. Messages use a durable, retryable outbox.
 - Material staff actions and rejected transitions produce correlation-aware audit events with minimized payloads.
+- The final customer consent is server-owned and versioned; the customer site loads it before submission and stale versions are rejected.
 
 ## Operations and data lifecycle
 

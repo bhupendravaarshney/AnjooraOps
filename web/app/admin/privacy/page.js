@@ -7,7 +7,8 @@ import { encodeCursor, parseCursor, searchTerm } from '@/lib/pagination';
 export const dynamic = 'force-dynamic';
 
 export default async function PrivacyPage({ searchParams }) {
-  const staff = await requireStaff({ roles: ['ADMIN'] });
+  const staff = await requireStaff({ capability: 'PRIVACY' });
+  const verificationMethod = process.env.PRIVACY_IDENTITY_VERIFICATION_METHOD || 'the approved manual procedure';
   const params = await searchParams;
   const search = searchTerm(params?.q);
   const cursor = parseCursor(params?.cursor);
@@ -23,7 +24,7 @@ export default async function PrivacyPage({ searchParams }) {
     <section className="card"><h2>Record verified request</h2><form action="/api/admin/privacy" method="post" className="stack">
       <input type="hidden" name="action" value="create"/>
       <div className="grid grid-2"><div className="field"><label>Customer public ID or exact phone</label><input name="customer_ref" required/></div><div className="field"><label>Request type</label><select name="request_type"><option>ACCESS</option><option>CORRECTION</option><option>ANONYMIZATION</option></select></div></div>
-      <label className="row"><input type="checkbox" name="identity_verified" value="yes" required style={{width:'auto'}}/> I verified the requester’s identity using the approved procedure.</label>
+      <label className="row"><input type="checkbox" name="identity_verified" value="yes" required style={{width:'auto'}}/> I verified the requester’s identity using: {verificationMethod}.</label>
       <div className="field"><label>Non-sensitive verification note</label><input name="notes" maxLength={500}/></div>
       <button className="btn">Record request</button>
     </form></section>

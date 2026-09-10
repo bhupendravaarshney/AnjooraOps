@@ -18,6 +18,7 @@ export default function ConsultForm() {
     data.submission_id=submissionId.current;
     data.realistic_rituals=fd.getAll('realistic_rituals');
     data.consent=true;
+    data.consent_version='2026-09-v1';
     try{
       const res=await fetch('/api/demo/consultations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
       const json=await res.json();

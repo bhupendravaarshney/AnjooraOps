@@ -11,8 +11,7 @@ export async function POST(request) {
   let staff = null;
   let action = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request });
-    if (staff.role !== 'ADMIN') throw new HttpError(403, 'Administrator permission is required.', 'FORBIDDEN');
+    staff = await requireStaff({ request, capability: 'PRIVACY' });
     const form = await request.formData();
     action = String(form.get('action') || '').toLowerCase();
     if (!['create', 'complete', 'legal_hold'].includes(action)) throw new HttpError(422, 'Unsupported privacy action.', 'UNKNOWN_ACTION');
@@ -53,7 +52,11 @@ export async function POST(request) {
           INSERT INTO data_subject_requests(
             id,public_id,customer_id,request_type,status,notes,verified_at,verification_evidence
           ) VALUES($1,$2,$3,$4,'OPEN',$5,now(),$6::jsonb) RETURNING *
-        `, [uuid(), publicId('ANJ-DSR'), customer.id, requestType, notes, JSON.stringify({ verified_by_staff_id: staff.id, method: 'approved-manual-procedure' })])).rows[0];
+        `, [uuid(), publicId('ANJ-DSR'), customer.id, requestType, notes, JSON.stringify({
+          verified_by_staff_id: staff.id,
+          method: process.env.PRIVACY_IDENTITY_VERIFICATION_METHOD || 'approved-manual-procedure',
+          approval_id: process.env.PRIVACY_APPROVAL_ID || null,
+        })])).rows[0];
         await db.query(`UPDATE customers SET identity_verified=true,updated_at=now() WHERE id=$1`, [customer.id]);
         await writeAudit(db, { request, staffId: staff.id, entityType: 'DATA_SUBJECT_REQUEST', entityId: record.id, action: 'CREATED', resultingState: 'OPEN', payload: { request_type: requestType, customer_id: customer.id } });
       });

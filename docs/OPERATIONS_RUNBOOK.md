@@ -6,14 +6,14 @@ This runbook covers the controls that must operate continuously after deployment
 
 Before enabling real consultation traffic:
 
-1. Run `npm run verify`, `npm run build`, and `npm run test:http` against an isolated release environment.
+1. Run `npm run config:validate`, `npm run verify`, `npm run build`, and `npm run test:http` against an isolated release environment.
 2. Set a real HTTPS `APP_URL`, independent random application secrets, `REQUIRE_STAFF_MFA=true`, and `ENABLE_DEMO_FORM=false`.
 3. Choose `PAYMENT_PROVIDER=MANUAL` or configure a real HTTPS payment link and webhook-signing secret.
 4. Configure either all Meta WhatsApp credentials or none. If enabled, approve and test every proactive template.
 5. Provision named staff accounts with least-privilege roles. Complete password rotation and MFA enrollment before granting production access.
 6. Confirm PostgreSQL TLS certificate verification, private network access, automated backups, alert destinations, and the retention settings with the privacy owner.
 
-The production environment validator refuses partial WhatsApp configuration, placeholder secrets, insecure external payment URLs, shared core secrets, an enabled demo form, or disabled staff MFA.
+The production environment validator refuses unverified database connections, partial WhatsApp configuration, placeholder secrets or endpoints, insecure external payment URLs, shared core secrets, an enabled demo form, or disabled staff MFA. With `GO_LIVE=true`, it also refuses bootstrap credentials, manual payment, an unversioned payment adapter/event map, missing Meta templates, absent recovery objectives, and missing privacy approval/configuration.
 
 ## Required schedules
 
@@ -25,8 +25,11 @@ Call each endpoint over HTTPS with `Authorization: Bearer <CRON_SECRET>`. Store 
 | `POST /api/jobs/refills` | Daily after midnight in the business timezone | HTTP 200; due count and queue count recorded |
 | `POST /api/jobs/maintenance` | Daily during a low-traffic period | HTTP 200; purge counts and lifecycle-review count recorded |
 | `GET /api/health` | Every minute from outside the hosting platform | HTTP 200 with `ok: true` |
+| `GET /api/jobs/status` | Every minute | HTTP 200; alert on HTTP 503 and returned issue codes |
 
-The outbox worker uses row locking, bounded retries, exponential backoff, stale-lock recovery, and durable failure state. It is safe to run from more than one worker. Do not run a second ad-hoc sender outside this outbox.
+The three POST jobs write `RUNNING`, `SUCCEEDED`, or `FAILED` records to `operational_job_runs`. The outbox worker uses row locking, bounded retries, exponential backoff, stale-lock recovery, and durable failure state. It is safe to run from more than one worker. Do not run a second ad-hoc sender outside this outbox.
+
+The repository commands `npm run job:outbox`, `npm run job:refills`, `npm run job:maintenance`, and `npm run ops:status` call these endpoints without placing `CRON_SECRET` in a URL or log. A scheduler must still activate them at the frequencies above.
 
 ## Alerting
 
@@ -36,10 +39,14 @@ Alert the operations owner when any of these conditions is true:
 - Any outbox job reaches `DEAD`.
 - A `PENDING` or `FAILED` outbox job is more than 15 minutes old.
 - A WhatsApp message is `FAILED` or `NOT_CONFIGURED` for more than 15 minutes.
+- Any inventory item has available quantity at or below its reorder level.
 - An order remains `PAYMENT_REVIEW_REQUIRED` for more than one business hour.
+- A scheduled job's latest recorded execution failed and no newer success has cleared it.
 - The daily refill or maintenance job has no successful run in 26 hours.
 - Database disk usage exceeds 75%, connection saturation exceeds 80%, or backup age exceeds 26 hours.
 - `customer_records_due_for_review` returned by maintenance is non-zero.
+
+`GET /api/jobs/status` implements the application/database-backed conditions and returns HTTP 503 with stable issue codes. Managed backup health, database disk usage, and connection saturation remain provider-owned monitors and must be added to the same escalation route. Record a real test-alert receipt and an incident drill in the private release evidence.
 
 Useful read-only checks:
 
@@ -57,6 +64,11 @@ GROUP BY delivery_status;
 SELECT count(*) payment_review_backlog
 FROM orders
 WHERE status='PAYMENT_REVIEW_REQUIRED';
+
+SELECT sku,name,available_quantity,reorder_level,unit
+FROM inventory_stock
+WHERE available_quantity<=reorder_level
+ORDER BY available_quantity-reorder_level,sku;
 ```
 
 ## Backup and restore
@@ -80,6 +92,22 @@ npm run ops:restore-test
 
 It takes a custom-format dump, creates a randomly named `anjoora_restore_test_*` database, restores and validates it, then drops only that test database. It never writes to or drops the source database.
 
+For a managed backup/PITR drill, restore through the provider into an isolated database, then validate it read-only:
+
+```powershell
+$env:RESTORE_CONFIRM_ISOLATED='true'
+$env:RESTORE_DATABASE_URL='<isolated restore URL>'
+$env:RESTORE_BACKUP_TIMESTAMP='<ISO-8601 backup timestamp>'
+$env:RESTORE_TARGET_TIMESTAMP='<ISO-8601 recovery target>'
+$env:RESTORE_STARTED_AT='<ISO-8601 restore start>'
+$env:RESTORE_OPERATOR='<named operator>'
+$env:RESTORE_REQUIRE_REPRESENTATIVE_DATA='true'
+$env:RESTORE_EVIDENCE_FILE='<new evidence JSON path>'
+npm run ops:restore-validate
+```
+
+The validator refuses the source database identity, requires verified TLS for a remote restore, opens a read-only transaction, checks every named migration and core structure, optionally requires representative data, calculates actual RPO/RTO through validation completion, and creates evidence using exclusive file creation so an old record is never overwritten. The local `ops:restore-test` also exercises this validator against its isolated restore. The infrastructure owner must separately record backup encryption, PITR policy, restricted/audited access, provider alert tests, isolated-database deletion, review, and the next drill date.
+
 ## Retention and privacy
 
 The daily maintenance job enforces configurable technical-data retention and respects `customers.legal_hold` for customer-linked payloads and audit events:
@@ -92,10 +120,19 @@ The daily maintenance job enforces configurable technical-data retention and res
 | Payment webhook/intent raw payload | 30 days |
 | Rate-limit events | 2 days |
 | Sent/dead outbox records | 365 days |
+| Completed operational job runs | 90 days |
 | Audit events | 2,555 days |
 | Structured customer record review threshold | 2,555 days |
 
 The structured-record threshold reports records due for human review; it does not silently erase commercial or consultation records. The privacy owner must approve whether those records are retained, put on legal hold, or processed through the verified anonymization workflow. Access exports omit internal token hashes, request IP hashes, raw provider payloads, and internal database identifiers.
+
+Production intake uses the exact `CONSULTATION_CONSENT_TEXT` identified by `CONSULTATION_CONSENT_VERSION`. ANJOORA fetches it from Ops before enabling the final consent control, and Ops rejects a submission carrying an old version. Privacy-request evidence records `PRIVACY_IDENTITY_VERIFICATION_METHOD` and `PRIVACY_APPROVAL_ID`; go-live validation also rejects missing or invalid approved retention settings.
+
+## Final evidence and sign-off
+
+Copy `docs/release-evidence.example.json` and `docs/staff-register.example.json` to the approved private evidence store. Do not put the real staff register or operational evidence in source control. The record is matched to the deployed release candidate, payment adapter, WhatsApp Business Account, consent version, privacy approval, and recovery objectives. Every release check needs `passed: true`, a named owner, an evidence reference, and a non-future verification timestamp. The release, business, clinical, privacy, and infrastructure owners must each sign after the latest recorded release check.
+
+Run `npm run release:audit` with `GO_LIVE=true`, `STAFF_REGISTER_FILE`, and `RELEASE_EVIDENCE_FILE`. It revalidates production configuration, verified database TLS, migrations, exact active staff membership/roles/password rotation/MFA, job freshness, operational backlogs, every evidence item, and all five sign-offs. A failed audit is a no-go decision.
 
 ## Incident actions
 

@@ -32,5 +32,20 @@ services:
       retries: 5
       start_period: 30s
 
+  scheduler:
+    build: .
+    env_file: .env
+    environment:
+      APP_URL: http://app:3000
+      DEPLOYMENT_PROFILE: local
+    working_dir: /app/web
+    command: ["node", "scripts/schedule-jobs.mjs"]
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
 volumes:
   anjoora_pg:

@@ -20,7 +20,7 @@ export async function POST(request) {
   let staff = null;
   let decision = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request, roles: ['OPERATIONS'] });
+    staff = await requireStaff({ request, capability: 'OPERATIONS' });
     const form = await request.formData();
     const refillId = String(form.get('refill_id') || '');
     const expectedStatus = String(form.get('expected_status') || '');

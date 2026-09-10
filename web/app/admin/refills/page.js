@@ -8,7 +8,7 @@ import { encodeCursor, parseCursor, searchTerm } from '@/lib/pagination';
 export const dynamic = 'force-dynamic';
 
 export default async function Refills({ searchParams }) {
-  const staff = await requireStaff({ roles: ['OPERATIONS'] });
+  const staff = await requireStaff({ capability: 'OPERATIONS' });
   const params = await searchParams;
   const search = searchTerm(params?.q);
   const cursor = parseCursor(params?.cursor);

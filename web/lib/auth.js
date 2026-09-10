@@ -3,12 +3,14 @@ import { redirect } from 'next/navigation';
 import { query } from '@/lib/db';
 import { tokenHash } from '@/lib/security';
 import { HttpError, requireSameOrigin } from '@/lib/http';
+import { STAFF_ROLES } from '@/lib/staff-policy';
+import { roleCan } from '@/lib/rbac';
 
 export const SESSION_COOKIE = process.env.NODE_ENV === 'production'
   ? '__Host-anjoora_session'
   : 'anjoora_session';
 
-export const STAFF_ROLES = Object.freeze(['ADMIN', 'VAIDYA', 'OPERATIONS', 'SUPPORT']);
+export { STAFF_ROLES };
 
 export async function getStaff() {
   const jar = await cookies();
@@ -29,7 +31,7 @@ export async function getStaff() {
   return staff;
 }
 
-export async function requireStaff({ request = null, roles = null, allowPasswordRotation = false, allowMfaEnrollment = false } = {}) {
+export async function requireStaff({ request = null, roles = null, capability = null, allowPasswordRotation = false, allowMfaEnrollment = false } = {}) {
   const staff = await getStaff();
   if (!staff) {
     if (request) throw new HttpError(401, 'Authentication is required.', 'AUTH_REQUIRED');
@@ -44,6 +46,10 @@ export async function requireStaff({ request = null, roles = null, allowPassword
     redirect('/admin/account/mfa');
   }
   if (roles?.length && staff.role !== 'ADMIN' && !roles.includes(staff.role)) {
+    if (request) throw new HttpError(403, 'You do not have permission for this action.', 'FORBIDDEN');
+    redirect('/admin?forbidden=1');
+  }
+  if (capability && !roleCan(staff.role, capability)) {
     if (request) throw new HttpError(403, 'You do not have permission for this action.', 'FORBIDDEN');
     redirect('/admin?forbidden=1');
   }

@@ -19,7 +19,7 @@ export async function POST(request) {
   let staff = null;
   let action = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request, roles: ['OPERATIONS'] });
+    staff = await requireStaff({ request, capability: 'OPERATIONS' });
     const form = await request.formData();
     action = String(form.get('action') || '').trim().toLowerCase();
     if (!['create', 'complete'].includes(action)) {

@@ -18,7 +18,7 @@ export async function POST(request) {
   let staff = null;
   let action = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request, roles: ['VAIDYA'] });
+    staff = await requireStaff({ request, capability: 'CLINICAL_REVIEW' });
     const form = await request.formData();
     const caseId = String(form.get('case_id') || '');
     const expectedStatus = String(form.get('expected_status') || '');

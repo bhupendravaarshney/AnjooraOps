@@ -4,7 +4,7 @@ import { query, withTransaction } from '@/lib/db';
 import { uuid, publicId } from '@/lib/ids';
 import { writeAudit } from '@/lib/audit';
 import { HttpError, errorResponse } from '@/lib/http';
-import { normalizeUnit, requireMatchingUnit } from '@/lib/units';
+import { parseFormulaIngredientSelections } from '@/lib/formula-ingredients';
 
 function text(value, field, maximum, required = false) {
   const result = String(value || '').trim();
@@ -13,31 +13,21 @@ function text(value, field, maximum, required = false) {
   return result || null;
 }
 
-function parseIngredients(value) {
-  const lines = String(value || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  if (lines.length > 100) throw new HttpError(422, 'A formula can contain at most 100 ingredients.', 'VALIDATION_ERROR');
-  const seen = new Set();
-  return lines.map((line, index) => {
-    const parts = line.split('|').map((part) => part.trim());
-    if (parts.length !== 4) throw new HttpError(422, `Ingredient line ${index + 1} must be SKU | Name | Qty | Unit.`, 'INVALID_INGREDIENT');
-    const [rawSku, rawName, rawQuantity, rawUnit] = parts;
-    const sku = text(rawSku, `Ingredient ${index + 1} SKU`, 64, true).toUpperCase();
-    const name = text(rawName, `Ingredient ${index + 1} name`, 120, true);
-    const quantity = Number(rawQuantity);
-    const unit = normalizeUnit(rawUnit);
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1_000_000) {
-      throw new HttpError(422, `Ingredient line ${index + 1} has an invalid quantity.`, 'INVALID_INGREDIENT');
-    }
-    if (seen.has(sku)) throw new HttpError(422, `Ingredient SKU ${sku} is duplicated.`, 'DUPLICATE_INGREDIENT');
-    seen.add(sku);
-    return { sku, name, quantity, unit };
-  });
+function ingredientSelections(form) {
+  try {
+    return parseFormulaIngredientSelections(
+      form.getAll('formula_ingredient_id'),
+      form.getAll('formula_ingredient_quantity'),
+    );
+  } catch (error) {
+    throw new HttpError(422, error.message, error.code || 'INVALID_INGREDIENT');
+  }
 }
 
 export async function POST(request) {
   let staff = null;
   try {
-    staff = await requireStaff({ request, roles: ['VAIDYA'] });
+    staff = await requireStaff({ request, capability: 'CLINICAL_REVIEW' });
     const form = await request.formData();
     const consultationId = String(form.get('consultation_id') || '');
     const expectedReviewStatus = String(form.get('expected_review_status') || '');
@@ -48,7 +38,7 @@ export async function POST(request) {
     const productReference = text(form.get('product_ref') || form.get('product_id'), 'Product', 100);
     const formulaName = text(form.get('formula_name'), 'Formula name', 160);
     const formulaFormat = text(form.get('formula_format'), 'Formula format', 80);
-    const ingredients = parseIngredients(form.get('ingredients'));
+    const ingredients = ingredientSelections(form);
     const previousFormulaId = String(form.get('previous_formula_id') || '') || null;
     if (!consultationId) throw new HttpError(422, 'consultation_id is required.', 'VALIDATION_ERROR');
     if (!['STANDARD', 'PERSONALISED'].includes(fulfillmentType)) {
@@ -59,6 +49,9 @@ export async function POST(request) {
     }
     if (fulfillmentType === 'STANDARD' && !productReference) {
       throw new HttpError(422, 'A standard recommendation requires a product.', 'PRODUCT_REQUIRED');
+    }
+    if (fulfillmentType === 'STANDARD' && ingredients.length) {
+      throw new HttpError(422, 'A standard recommendation cannot also contain formula ingredients.', 'MIXED_FULFILLMENT');
     }
     if (fulfillmentType === 'PERSONALISED' && productReference) {
       throw new HttpError(422, 'A personalised recommendation cannot also select a product.', 'MIXED_FULFILLMENT');
@@ -114,20 +107,35 @@ export async function POST(request) {
         let finalIngredients = ingredients;
         if (!finalIngredients.length && previous) {
           finalIngredients = (await db.query(`
-            SELECT ii.sku,fi.ingredient_name name,fi.quantity,fi.unit
-            FROM formula_items fi JOIN inventory_items ii ON ii.id=fi.inventory_item_id
+            SELECT fi.formula_ingredient_id "ingredientId",fi.quantity
+            FROM formula_items fi
             WHERE fi.formula_id=$1 ORDER BY fi.id
           `, [previous.id])).rows.map((item) => ({ ...item, quantity: Number(item.quantity) }));
         }
         if (!finalIngredients.length) throw new HttpError(422, 'Personalised formula requires ingredients.', 'EMPTY_FORMULA');
 
-        const mappedIngredients = [];
-        for (const item of finalIngredients) {
-          const inventory = (await db.query(`SELECT id,unit,active FROM inventory_items WHERE sku=$1 FOR UPDATE`, [item.sku])).rows[0];
-          if (!inventory?.active) throw new HttpError(409, `Ingredient SKU ${item.sku} is not mapped to active inventory.`, 'UNMAPPED_INGREDIENT');
-          requireMatchingUnit(inventory.unit, item.unit);
-          mappedIngredients.push({ ...item, inventoryItemId: inventory.id, unit: normalizeUnit(item.unit) });
-        }
+        const catalogue = await db.query(`
+          SELECT ingredient.id,ingredient.name,ingredient.inventory_item_id,
+                 ingredient.active,ii.sku,ii.unit,ii.active inventory_active
+          FROM formula_ingredients ingredient
+          JOIN inventory_items ii ON ii.id=ingredient.inventory_item_id
+          WHERE ingredient.id=ANY($1::uuid[])
+          FOR UPDATE OF ingredient,ii
+        `, [finalIngredients.map((item) => item.ingredientId)]);
+        const catalogueById = new Map(catalogue.rows.map((item) => [item.id, item]));
+        const mappedIngredients = finalIngredients.map((selection, index) => {
+          const ingredient = catalogueById.get(selection.ingredientId);
+          if (!ingredient?.active || !ingredient.inventory_active) {
+            throw new HttpError(409, `Formula ingredient row ${index + 1} is unavailable.`, 'INGREDIENT_UNAVAILABLE');
+          }
+          return {
+            ...selection,
+            name: ingredient.name,
+            sku: ingredient.sku,
+            unit: ingredient.unit,
+            inventoryItemId: ingredient.inventory_item_id,
+          };
+        });
         formulaId = uuid();
         await db.query(`
           INSERT INTO formulas(
@@ -139,9 +147,10 @@ export async function POST(request) {
         ]);
         for (const item of mappedIngredients) {
           await db.query(`
-            INSERT INTO formula_items(id,formula_id,inventory_item_id,ingredient_name,quantity,unit)
-            VALUES($1,$2,$3,$4,$5,$6)
-          `, [uuid(), formulaId, item.inventoryItemId, item.name, item.quantity, item.unit]);
+            INSERT INTO formula_items(
+              id,formula_id,formula_ingredient_id,inventory_item_id,ingredient_name,quantity,unit
+            ) VALUES($1,$2,$3,$4,$5,$6,$7)
+          `, [uuid(), formulaId, item.ingredientId, item.inventoryItemId, item.name, item.quantity, item.unit]);
         }
       }
 

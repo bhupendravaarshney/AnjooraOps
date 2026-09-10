@@ -43,6 +43,7 @@ function testPhone() {
   return `919${crypto.randomInt(100_000_000, 1_000_000_000)}`;
 }
 
+let activeConsentVersion = '2026-09-v1';
 function consultationPayload(phone) {
   return {
     submission_id: crypto.randomUUID(),
@@ -58,6 +59,7 @@ function consultationPayload(phone) {
     questionnaire_version: '1.0',
     safety_screen_version: '1.0',
     consent: true,
+    consent_version: activeConsentVersion,
   };
 }
 
@@ -95,12 +97,23 @@ const rbacRequestId = `smoke-rbac-${requestMarker}`;
 const metaMessageId = `wamid.smoke.${requestMarker}`;
 const statusMetaMessageId = `wamid.smoke.status.${requestMarker}`;
 const statusOutboxKey = `status-smoke:${requestMarker}`;
-const client = new Client({ connectionString: databaseUrl.toString() });
+const databaseSsl = environment.DATABASE_SSL === 'true'
+  ? { rejectUnauthorized: true, ...(environment.DATABASE_CA_CERT ? { ca: environment.DATABASE_CA_CERT.replace(/\\n/g, '\n') } : {}) }
+  : undefined;
+const client = new Client({ connectionString: databaseUrl.toString(), ssl: databaseSsl });
 let clientConnected = false;
 const consultationEntityIds = [];
 const supportStaffId = crypto.randomUUID();
 const supportEmail = `support-${requestMarker}@example.test`;
 const supportPassword = 'Smoke Support!42';
+const adminStaffId = crypto.randomUUID();
+const managedSupportEmail = `named-support-${requestMarker}@example.test`;
+let managedSupportId = null;
+const catalogueInventoryId = crypto.randomUUID();
+const catalogueIngredientId = crypto.randomUUID();
+const catalogueSku = `SMOKE-RM-${requestMarker.slice(0, 8).toUpperCase()}`;
+let createdFormulaId = null;
+let createdRecommendationId = null;
 
 function rateLimitHash(scope, key) {
   return crypto.createHmac('sha256', sessionSecret).update(`${scope}:${key}`).digest('hex');
@@ -116,11 +129,33 @@ try {
     INSERT INTO staff_users(id,email,name,password_hash,role,must_rotate_password)
     VALUES($1,$2,'Smoke Support',$3,'SUPPORT',false)
   `, [supportStaffId, supportEmail, passwordHash]);
+  await client.query(`
+    INSERT INTO staff_users(id,email,name,password_hash,role,must_rotate_password,mfa_enabled)
+    VALUES($1,$2,'Smoke Administrator',$3,'ADMIN',false,true)
+  `, [adminStaffId, `admin-${requestMarker}@example.test`, passwordHash]);
+  await client.query(`
+    INSERT INTO inventory_items(id,public_id,sku,name,unit,reorder_level)
+    VALUES($1,$2,$3,'Authoritative smoke ingredient','g',0)
+  `, [catalogueInventoryId, `ANJ-INV-SMOKE-${requestMarker}`, catalogueSku]);
+  await client.query(`
+    INSERT INTO formula_ingredients(id,public_id,inventory_item_id,name)
+    VALUES($1,$2,$3,'Catalogue smoke ingredient')
+  `, [catalogueIngredientId, `ANJ-FING-SMOKE-${requestMarker}`, catalogueInventoryId]);
 
   const health = await fetch(new URL('/api/health', opsUrl), { signal: AbortSignal.timeout(10_000) });
   assert.equal(health.status, 200, 'Ops health endpoint should return 200.');
   assert.ok(health.headers.get('content-security-policy'), 'Content-Security-Policy header should be present.');
   assert.equal(health.headers.get('x-content-type-options'), 'nosniff', 'X-Content-Type-Options should be nosniff.');
+
+  const opsConsent = await jsonRequest(new URL('/api/v1/consent', opsUrl));
+  assert.equal(opsConsent.response.status, 200, 'Ops consent policy should be available.');
+  assert.ok(opsConsent.body?.version && opsConsent.body?.text, 'Ops consent policy should include version and text.');
+  activeConsentVersion = opsConsent.body.version;
+  if (environment.SKIP_ANJOORA_SMOKE !== 'true') {
+    const frontendConsent = await jsonRequest(new URL('/api/consultations', frontendUrl));
+    assert.equal(frontendConsent.response.status, 200, 'Anjoora should proxy the current consent policy.');
+    assert.deepEqual(frontendConsent.body, opsConsent.body, 'Anjoora must display the exact Ops consent policy.');
+  }
 
   const unauthenticated = await jsonRequest(new URL('/api/v1/consultations', opsUrl), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(consultationPayload(directPhone)),
@@ -161,6 +196,64 @@ try {
     body: new URLSearchParams({ action: 'create_item' }),
   });
   assert.equal(forbiddenInventory.response.status, 403, 'A support user must not mutate inventory.');
+  const forbiddenStaffManagement = await jsonRequest(new URL('/api/admin/staff', opsUrl), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: appOrigin,
+      Cookie: sessionCookie,
+      'X-Request-Id': rbacRequestId,
+    },
+    body: new URLSearchParams({ action: 'create' }),
+  });
+  assert.equal(forbiddenStaffManagement.response.status, 403, 'A support user must not manage staff accounts.');
+
+  const sessionCookieName = sessionCookie.split('=')[0];
+  const administratorToken = crypto.randomBytes(32).toString('base64url');
+  await client.query(`
+    INSERT INTO sessions(id,staff_user_id,token_hash,expires_at)
+    VALUES($1,$2,$3,now()+interval '1 hour')
+  `, [crypto.randomUUID(), adminStaffId, crypto.createHash('sha256').update(administratorToken).digest('hex')]);
+  const administratorCookie = `${sessionCookieName}=${administratorToken}`;
+  const staffPage = await fetch(new URL('/admin/staff', opsUrl), {
+    headers: { Cookie: administratorCookie }, redirect: 'manual', signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(staffPage.status, 200, 'An administrator should be able to open staff management.');
+  const staffPageBody = await staffPage.text();
+  assert.ok(staffPageBody.includes('Dashboard and WhatsApp only'), 'Staff management should explain SUPPORT tab access.');
+  const createSupport = await fetch(new URL('/api/admin/staff', opsUrl), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: appOrigin,
+      Cookie: administratorCookie,
+      'X-Request-Id': `staff-${requestMarker}`,
+    },
+    body: new URLSearchParams({
+      action: 'create', name: 'Named Support Smoke', email: managedSupportEmail,
+      role: 'SUPPORT', temporary_password: 'Named Support!42',
+    }),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(createSupport.status, 303, 'An administrator should be able to create a named support account.');
+  const managedSupport = await client.query(`
+    SELECT id,role,active,must_rotate_password,mfa_enabled
+    FROM staff_users WHERE email=$1
+  `, [managedSupportEmail]);
+  assert.equal(managedSupport.rowCount, 1);
+  managedSupportId = managedSupport.rows[0].id;
+  assert.deepEqual({
+    role: managedSupport.rows[0].role,
+    active: managedSupport.rows[0].active,
+    must_rotate_password: managedSupport.rows[0].must_rotate_password,
+    mfa_enabled: managedSupport.rows[0].mfa_enabled,
+  }, { role: 'SUPPORT', active: true, must_rotate_password: true, mfa_enabled: false });
+  const staffCreationAudit = await client.query(`
+    SELECT action FROM audit_events
+    WHERE entity_type='STAFF_USER' AND entity_id=$1 AND staff_user_id=$2 AND action='CREATED'
+  `, [managedSupportId, adminStaffId]);
+  assert.equal(staffCreationAudit.rowCount, 1, 'Staff creation should be attributed to the administrator.');
 
   const payload = consultationPayload(directPhone);
   const intakeHeaders = {
@@ -181,6 +274,61 @@ try {
   assert.equal(replayed.response.status, 200, `Intake replay returned ${replayed.response.status}: ${JSON.stringify(replayed.body)}`);
   assert.equal(replayed.response.headers.get('idempotent-replayed'), 'true');
   assert.equal(replayed.body.consultation_id, created.body.consultation_id, 'Replay should return the original consultation.');
+
+  const recommendationContext = await client.query(`
+    SELECT c.id,rc.id review_case_id
+    FROM consultations c JOIN review_cases rc ON rc.consultation_id=c.id
+    WHERE c.submission_id=$1
+  `, [payload.submission_id]);
+  assert.equal(recommendationContext.rowCount, 1);
+  await client.query(`UPDATE review_cases SET status='READY_FOR_RECOMMENDATION',updated_at=now() WHERE id=$1`, [recommendationContext.rows[0].review_case_id]);
+  const recommendationPage = await fetch(new URL(`/admin/consultations/${recommendationContext.rows[0].id}`, opsUrl), {
+    headers: { Cookie: administratorCookie }, redirect: 'manual', signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(recommendationPage.status, 200, 'An administrator should be able to open recommendation creation.');
+  const recommendationPageBody = await recommendationPage.text();
+  assert.ok(recommendationPageBody.includes('name="formula_ingredient_id"'), 'Recommendation creation should render catalogue ingredient dropdowns.');
+  assert.ok(recommendationPageBody.includes(catalogueSku), 'The ingredient dropdown should be fetched from the database catalogue.');
+  const recommendationForm = new URLSearchParams({
+    consultation_id: recommendationContext.rows[0].id,
+    expected_review_status: 'READY_FOR_RECOMMENDATION',
+    summary: 'Personalised smoke recommendation',
+    fulfillment_type: 'PERSONALISED',
+    duration_days: '30',
+    formula_name: 'Smoke formula',
+    formula_format: 'infusion',
+    usage_instructions: 'Smoke instructions',
+  });
+  recommendationForm.append('formula_ingredient_id', catalogueIngredientId);
+  recommendationForm.append('formula_ingredient_quantity', '12.5');
+  const recommendationCreation = await fetch(new URL('/api/admin/recommendations', opsUrl), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Origin: appOrigin,
+      Cookie: administratorCookie,
+      'X-Request-Id': `recommendation-${requestMarker}`,
+    },
+    body: recommendationForm,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+  });
+  assert.equal(recommendationCreation.status, 303, 'A catalogue-backed personalised recommendation should be created.');
+  const storedFormulaItem = await client.query(`
+    SELECT r.id recommendation_id,r.formula_id,fi.formula_ingredient_id,
+           fi.inventory_item_id,fi.ingredient_name,fi.quantity,fi.unit
+    FROM recommendations r
+    JOIN formula_items fi ON fi.formula_id=r.formula_id
+    WHERE r.consultation_id=$1 AND r.is_current=true
+  `, [recommendationContext.rows[0].id]);
+  assert.equal(storedFormulaItem.rowCount, 1);
+  createdRecommendationId = storedFormulaItem.rows[0].recommendation_id;
+  createdFormulaId = storedFormulaItem.rows[0].formula_id;
+  assert.equal(storedFormulaItem.rows[0].formula_ingredient_id, catalogueIngredientId);
+  assert.equal(storedFormulaItem.rows[0].inventory_item_id, catalogueInventoryId);
+  assert.equal(storedFormulaItem.rows[0].ingredient_name, 'Catalogue smoke ingredient');
+  assert.equal(Number(storedFormulaItem.rows[0].quantity), 12.5);
+  assert.equal(storedFormulaItem.rows[0].unit, 'g');
 
   const invalid = await jsonRequest(new URL('/api/v1/consultations', opsUrl), {
     method: 'POST',
@@ -292,7 +440,7 @@ try {
   assert.equal(webhookRows.rowCount, 1, 'Duplicate webhook should persist one inbound message.');
   assert.equal(outboxRows.rowCount, 1, 'Duplicate webhook should enqueue one bot job.');
 
-  console.log('HTTP smoke checks passed: intake auth/validation/idempotency, CSRF/RBAC, security headers, Anjoora proxy, WhatsApp deduplication, and failure callbacks.');
+  console.log('HTTP smoke checks passed: intake auth/validation/idempotency, exact consent proxy, CSRF/RBAC including staff management, security headers, Anjoora proxy, WhatsApp deduplication, and failure callbacks.');
 } finally {
   if (clientConnected) {
     try {
@@ -300,10 +448,20 @@ try {
       const ids = (await client.query(`SELECT c.id FROM consultations c JOIN customers cu ON cu.id=c.customer_id WHERE cu.phone=ANY($1::text[])`, [[directPhone, frontendPhone]])).rows.map((row) => row.id);
       const allEntityIds = [...new Set([...consultationEntityIds, ...ids])];
       if (allEntityIds.length) await client.query(`DELETE FROM audit_events WHERE entity_id=ANY($1::uuid[])`, [allEntityIds]);
+      if (createdRecommendationId) await client.query(`DELETE FROM recommendations WHERE id=$1`, [createdRecommendationId]);
+      if (createdFormulaId) await client.query(`DELETE FROM formulas WHERE id=$1`, [createdFormulaId]);
       await client.query(`DELETE FROM audit_events WHERE correlation_id=ANY($1::text[]) OR entity_id=$2 OR staff_user_id=$2`, [[directRequestId, invalidRequestId, rbacRequestId], supportStaffId]);
+      if (managedSupportId) {
+        await client.query(`DELETE FROM audit_events WHERE entity_id=$1 OR staff_user_id=ANY($2::uuid[])`, [managedSupportId, [managedSupportId, adminStaffId]]);
+        await client.query(`DELETE FROM staff_users WHERE id=$1`, [managedSupportId]);
+      }
+      await client.query(`DELETE FROM audit_events WHERE entity_id=$1 OR staff_user_id=$1`, [adminStaffId]);
+      await client.query(`DELETE FROM staff_users WHERE id=$1`, [adminStaffId]);
       await client.query(`DELETE FROM staff_users WHERE id=$1`, [supportStaffId]);
       if (allEntityIds.length) await client.query(`DELETE FROM consultations WHERE id=ANY($1::uuid[])`, [allEntityIds]);
       await client.query(`DELETE FROM customers WHERE phone=ANY($1::text[])`, [[directPhone, frontendPhone, webhookPhone]]);
+      await client.query(`DELETE FROM formula_ingredients WHERE id=$1`, [catalogueIngredientId]);
+      await client.query(`DELETE FROM inventory_items WHERE id=$1`, [catalogueInventoryId]);
       const rateLimitHashes = [
         rateLimitHash('consultation-ip', directIp),
         rateLimitHash('consultation-ip', invalidIp),

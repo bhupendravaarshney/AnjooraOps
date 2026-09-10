@@ -5,7 +5,7 @@ import { HttpError, errorResponse } from '@/lib/http';
 
 export async function GET(request) {
   try {
-    const staff = await requireStaff({ roles: ['ADMIN'] });
+    const staff = await requireStaff({ capability: 'PRIVACY' });
     const requestId = new URL(request.url).searchParams.get('request_id');
     if (!requestId) throw new HttpError(422, 'request_id is required.', 'VALIDATION_ERROR');
 

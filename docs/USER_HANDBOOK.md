@@ -209,6 +209,8 @@ Only authorized staff may sign in. Always use your own named account.
 
 If you cannot see a screen or action, first check whether it belongs to your role. Do not borrow another person's account.
 
+Administrators create named users from **Staff**. Enter the person's full name, named work email, role, and a temporary password. New users must change that password on first sign-in and enroll MFA when required. The SUPPORT role can use only Dashboard and WhatsApp operational tabs; hiding the other tabs is backed by server-side permission checks.
+
 The local staff login is `http://localhost:3000/admin/login` after the system owner starts the services. Production may use another secure address.
 
 ### 2. Sign in and secure your account
@@ -286,7 +288,7 @@ Most lists have a search box. Search with the information named in the placehold
    - choose **Standard product** or **Personalised formula**;
    - enter a positive duration in days;
    - for a standard item, enter its product SKU/public ID;
-   - for a personalized formula, enter its name, format, and every ingredient as `SKU | Name | Quantity | Unit`.
+   - for a personalized formula, enter its name and format, select every ingredient from the catalogue dropdown, and enter each quantity. SKU, name, unit, and inventory mapping are resolved from the database.
 8. Check the information, then select **Approve recommendation**.
 9. If a valid revision is needed, use **Create revised recommendation / next formula version**. Do not alter the historical customer submission.
 
@@ -362,6 +364,13 @@ Transactions cannot be edited or deleted. Correct a mistake with a new opposite/
 4. Save the mapping.
 
 A paid standard-product order cannot be allocated until this mapping and enough stock exist.
+
+**Manage formula ingredients**
+
+1. Create the raw-material inventory item first and confirm its canonical unit.
+2. In **Formula ingredient catalogue**, select that inventory item and optionally set the practitioner-facing display name.
+3. Select **Add/update ingredient**. Only active catalogue entries appear in recommendation dropdowns.
+4. Deactivate an entry to prevent new selection. Existing formula history keeps its recorded snapshot and is not rewritten.
 
 ### 10. Fulfill a standard-product order
 
@@ -654,6 +663,8 @@ Questionnaire की saved progress उसी browser/device से जुड़
 
 यदि कोई screen/action नहीं दिख रही, तो पहले अपना role देखें। किसी दूसरे व्यक्ति का account इस्तेमाल न करें।
 
+Administrator **Staff** tab से named user बनाता है। Full name, named work email, role और temporary password भरें। नया user पहले login पर password बदलेगा और जरूरी होने पर MFA चालू करेगा। SUPPORT role केवल Dashboard और WhatsApp operational tabs इस्तेमाल कर सकता है; server APIs भी बाकी access रोकती हैं।
+
 System owner द्वारा services शुरू करने के बाद local staff login `http://localhost:3000/admin/login` है। Production में अलग secure address हो सकता है।
 
 ### 2. Login और account security
@@ -731,7 +742,7 @@ System owner द्वारा services शुरू करने के बा
    - **Standard product** या **Personalised formula** चुनें;
    - positive duration days भरें;
    - standard item के लिए product SKU/public ID भरें;
-   - personalized formula के लिए name, format और हर ingredient `SKU | Name | Quantity | Unit` में भरें।
+   - personalized formula के लिए name और format भरें, catalogue dropdown से हर ingredient चुनें और quantity डालें। SKU, name, unit और inventory mapping database से आते हैं।
 8. सब जांचकर **Approve recommendation** दबाएं।
 9. सही revision की जरूरत हो तो **Create revised recommendation / next formula version** इस्तेमाल करें। Customer का original submission न बदलें।
 
@@ -802,6 +813,13 @@ Transaction edit/delete नहीं हो सकता। गलती सु�
 4. Mapping save करें।
 
 Mapping और पर्याप्त stock के बिना paid standard-product order allocate नहीं होगा।
+
+**Formula ingredients manage करें**
+
+1. पहले raw-material inventory item बनाएं और उसका canonical unit जांचें।
+2. **Formula ingredient catalogue** में inventory item चुनें और जरूरत पर display name भरें।
+3. **Add/update ingredient** दबाएं। Recommendation dropdown में केवल active catalogue entries दिखती हैं।
+4. नई recommendation में selection रोकने के लिए entry deactivate करें। पुराना formula history नहीं बदलेगा।
 
 ### 10. Standard-product order पूरा करें
 
@@ -914,4 +932,3 @@ Your organization should fill in these details before giving this handbook to us
 | Privacy request / Privacy request | _To be filled by the privacy owner_ |
 
 For deployment, monitoring, backup, and incident procedures, staff owners should use the [Operations runbook](OPERATIONS_RUNBOOK.md). This user handbook does not replace the approved clinical, emergency, privacy, payment, or incident policy.
-

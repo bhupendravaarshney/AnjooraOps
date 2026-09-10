@@ -7,18 +7,25 @@ import { encodeCursor, parseCursor, searchTerm } from '@/lib/pagination';
 export const dynamic = 'force-dynamic';
 
 export default async function Orders({ searchParams }) {
-  const staff = await requireStaff({ roles: ['OPERATIONS'] });
+  const staff = await requireStaff({ capability: 'OPERATIONS' });
   const params = await searchParams;
   const search = searchTerm(params?.q);
   const cursor = parseCursor(params?.cursor);
   const { rows } = await query(`
     SELECT o.*,c.name customer_name,r.fulfillment_type,
-           pi.public_id payment_reference,pi.status payment_intent_status
+           pi.public_id payment_reference,pi.status payment_intent_status,
+           pe.id payment_review_event_id,pe.canonical_status payment_review_event_status,
+           pe.processed_at payment_review_event_at
     FROM orders o JOIN customers c ON c.id=o.customer_id
     JOIN recommendations r ON r.id=o.recommendation_id
     LEFT JOIN LATERAL (
       SELECT public_id,status FROM payment_intents WHERE order_id=o.id ORDER BY created_at DESC LIMIT 1
     ) pi ON true
+    LEFT JOIN LATERAL (
+      SELECT id,canonical_status,processed_at FROM payment_events
+      WHERE order_id=o.id AND processing_outcome='REVIEW_REQUIRED' AND reviewed_at IS NULL
+      ORDER BY processed_at DESC LIMIT 1
+    ) pe ON true
     WHERE ($1='' OR o.public_id ILIKE $1||'%' OR lower(c.name) LIKE lower($1)||'%')
       AND ($2::timestamptz IS NULL OR (o.created_at,o.id)<($2::timestamptz,$3::uuid))
     ORDER BY o.created_at DESC,o.id DESC LIMIT 51
@@ -32,6 +39,7 @@ export default async function Orders({ searchParams }) {
       <td><Status value={order.status}/></td><td>{new Date(order.created_at).toLocaleDateString()}</td>
       <td><div className="stack">
         {staff.role === 'ADMIN' && ['AWAITING_PAYMENT','PAYMENT_PENDING','PAYMENT_REVIEW_REQUIRED'].includes(order.status) && <form action="/api/admin/orders" method="post" className="row"><input type="hidden" name="action" value="mark_paid"/><input type="hidden" name="order_id" value={order.id}/><input type="hidden" name="expected_status" value={order.status}/><input name="payment_reference" placeholder="Verified payment reference" required maxLength={200}/><button className="btn secondary">Reconcile paid</button></form>}
+        {staff.role === 'ADMIN' && order.payment_review_event_id && <form action="/api/admin/orders" method="post" className="stack"><input type="hidden" name="action" value="review_payment_event"/><input type="hidden" name="payment_event_id" value={order.payment_review_event_id}/><div className="small muted">Provider {order.payment_review_event_status} event requires review.</div><input name="review_note" placeholder="Verified resolution and provider evidence" minLength={5} maxLength={500} required/><button className="btn secondary">Record event review</button></form>}
         {order.status === 'PAID' && order.fulfillment_type === 'STANDARD' && <form action="/api/admin/orders" method="post"><input type="hidden" name="action" value="ready"/><input type="hidden" name="order_id" value={order.id}/><input type="hidden" name="expected_status" value={order.status}/><button className="btn secondary">Allocate stock → dispatch</button></form>}
         {order.status === 'PAID' && order.fulfillment_type === 'PERSONALISED' && <a className="btn outline" href={`/admin/batches?order=${encodeURIComponent(order.public_id)}`}>Prepare batch</a>}
       </div></td>

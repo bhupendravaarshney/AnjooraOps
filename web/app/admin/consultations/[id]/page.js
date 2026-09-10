@@ -1,12 +1,14 @@
 import { notFound } from 'next/navigation';
 import { requireStaff } from '@/lib/auth';
+import { roleCan } from '@/lib/rbac';
 import { query } from '@/lib/db';
 import AdminShell from '@/app/components/AdminShell';
 import Status from '@/app/components/Status';
+import RecommendationFulfilmentFields from '@/app/components/RecommendationFulfilmentFields';
 
 export const dynamic = 'force-dynamic';
 
-function RecommendationForm({ consultationId, expectedReviewStatus, previous = null, title = 'Create recommendation' }) {
+function RecommendationForm({ consultationId, expectedReviewStatus, formulaIngredients, previous = null, previousFormulaItems = [], title = 'Create recommendation' }) {
   return <div className="stack">
     <h3>{title}</h3>
     <form action="/api/admin/recommendations" method="post" className="stack">
@@ -17,39 +19,23 @@ function RecommendationForm({ consultationId, expectedReviewStatus, previous = n
         <label>Recommendation summary</label>
         <textarea name="summary" required defaultValue={previous?.summary || ''} placeholder="What is recommended and why"/>
       </div>
+      <RecommendationFulfilmentFields
+        initialType={previous?.fulfillment_type || 'STANDARD'}
+        initialProductRef={previous?.product_sku || previous?.product_public_id || ''}
+        initialFormulaName={previous?.formula_name || ''}
+        initialFormulaFormat={previous?.formula_format || ''}
+        ingredients={formulaIngredients}
+        initialItems={previousFormulaItems}
+      />
       <div className="grid grid-2">
-        <div className="field">
-          <label>Fulfilment</label>
-          <select name="fulfillment_type" defaultValue={previous?.fulfillment_type || 'STANDARD'}>
-            <option value="STANDARD">Standard product</option>
-            <option value="PERSONALISED">Personalised formula</option>
-          </select>
-        </div>
         <div className="field">
           <label>Duration days</label>
           <input type="number" name="duration_days" min="1" max="3650" step="1" required defaultValue={previous?.duration_days || 30}/>
-        </div>
-        <div className="field">
-          <label>Standard product SKU or public ID (if used)</label>
-          <input name="product_ref" defaultValue={previous?.product_sku || previous?.product_public_id || ''} placeholder="ANJ-SLEEP-01" maxLength={100}/>
-        </div>
-        <div className="field">
-          <label>Formula name (if personalised)</label>
-          <input name="formula_name" defaultValue={previous?.formula_name || ''} placeholder="Sleep support infusion"/>
-        </div>
-        <div className="field">
-          <label>Formula format</label>
-          <input name="formula_format" defaultValue={previous?.formula_format || ''} placeholder="infusion"/>
         </div>
       </div>
       <div className="field">
         <label>Usage instructions</label>
         <textarea name="usage_instructions" defaultValue={previous?.usage_instructions || ''}/>
-      </div>
-      <div className="field">
-        <label>Formula ingredients — one per line: SKU | Name | Qty | Unit</label>
-        <textarea name="ingredients" placeholder={'RM-ASHWAGANDHA | Ashwagandha | 30 | g\nRM-BRAHMI | Brahmi | 20 | g'}/>
-        {previous?.formula_id && <div className="small muted">Leave ingredients empty to copy the previous formula items into the next formula version.</div>}
       </div>
       <button className="btn" type="submit">{previous ? 'Approve revised recommendation' : 'Approve recommendation'}</button>
     </form>
@@ -57,7 +43,7 @@ function RecommendationForm({ consultationId, expectedReviewStatus, previous = n
 }
 
 export default async function ConsultationDetail({ params }) {
-  const staff = await requireStaff({ roles: ['VAIDYA', 'OPERATIONS'] });
+  const staff = await requireStaff({ capability: 'CONSULTATIONS_VIEW' });
   const { id } = await params;
   const base = await query(`
     SELECT c.*,cu.name,cu.phone,cu.city,cu.language,cu.best_contact_time,
@@ -71,7 +57,7 @@ export default async function ConsultationDetail({ params }) {
   const c = base.rows[0];
   if (!c) notFound();
 
-  const [notes, recs, concernsResult, safetyResult] = await Promise.all([
+  const [notes, recs, concernsResult, safetyResult, formulaIngredientsResult] = await Promise.all([
     query(`SELECT * FROM consultation_notes WHERE consultation_id=$1 ORDER BY created_at DESC`, [id]),
     query(`
       SELECT r.*,p.public_id product_public_id,p.sku product_sku,p.name product_name,f.name formula_name,f.format formula_format,
@@ -94,6 +80,13 @@ export default async function ConsultationDetail({ params }) {
       WHERE consultation_id=$1
       ORDER BY position
     `, [id]),
+    query(`
+      SELECT ingredient.id,ingredient.public_id,ingredient.name,ii.sku,ii.unit
+      FROM formula_ingredients ingredient
+      JOIN inventory_items ii ON ii.id=ingredient.inventory_item_id
+      WHERE ingredient.active=true AND ii.active=true
+      ORDER BY lower(ingredient.name),ii.sku,ingredient.id
+    `),
   ]);
 
   const concerns = concernsResult.rows.length
@@ -108,11 +101,12 @@ export default async function ConsultationDetail({ params }) {
     ? (await query(`SELECT * FROM orders WHERE recommendation_id=$1 ORDER BY created_at DESC LIMIT 1`, [latestRec.id])).rows[0]
     : null;
   const formulaItems = latestRec?.formula_id
-    ? (await query(`SELECT fi.*,ii.sku FROM formula_items fi LEFT JOIN inventory_items ii ON ii.id=fi.inventory_item_id WHERE fi.formula_id=$1`, [latestRec.formula_id])).rows
+    ? (await query(`SELECT fi.*,ii.sku FROM formula_items fi LEFT JOIN inventory_items ii ON ii.id=fi.inventory_item_id WHERE fi.formula_id=$1 ORDER BY fi.id`, [latestRec.formula_id])).rows
     : [];
+  const formulaIngredients = formulaIngredientsResult.rows;
   const mayRevise = Boolean(latestRec && !c.urgent_safety_flag && c.review_status === 'READY_FOR_RECOMMENDATION');
-  const mayReview = ['ADMIN', 'VAIDYA'].includes(staff.role);
-  const mayOperate = ['ADMIN', 'OPERATIONS'].includes(staff.role);
+  const mayReview = roleCan(staff.role, 'CLINICAL_REVIEW');
+  const mayOperate = roleCan(staff.role, 'OPERATIONS');
 
   return <AdminShell staff={staff}>
     <div className="section-head">
@@ -219,12 +213,12 @@ export default async function ConsultationDetail({ params }) {
               </form> : <div className="muted">An operations user must create the order.</div>}
         </div>
         {mayRevise && <div style={{borderTop:'1px solid var(--line)',paddingTop:18}}>
-          {mayReview && <RecommendationForm consultationId={c.id} expectedReviewStatus={c.review_status} previous={latestRec} title="Create revised recommendation / next formula version"/>}
+          {mayReview && <RecommendationForm consultationId={c.id} expectedReviewStatus={c.review_status} formulaIngredients={formulaIngredients} previous={latestRec} previousFormulaItems={formulaItems} title="Create revised recommendation / next formula version"/>}
         </div>}
       </> : c.urgent_safety_flag
         ? <div className="error">Recommendation creation is blocked because this consultation contains an urgent safety flag.</div>
         : mayReview && c.review_status === 'READY_FOR_RECOMMENDATION'
-          ? <RecommendationForm consultationId={c.id} expectedReviewStatus={c.review_status}/>
+          ? <RecommendationForm consultationId={c.id} expectedReviewStatus={c.review_status} formulaIngredients={formulaIngredients}/>
           : <div className="muted">A Vaidya must complete review and mark this case ready before creating a recommendation.</div>}      
     </section>
   </AdminShell>;

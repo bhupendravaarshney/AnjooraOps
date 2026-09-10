@@ -6,12 +6,12 @@ import { encodeCursor, parseCursor, searchTerm } from '@/lib/pagination';
 export const dynamic = 'force-dynamic';
 
 export default async function Inventory({ searchParams }) {
-  const staff = await requireStaff({ roles: ['OPERATIONS'] });
+  const staff = await requireStaff({ capability: 'OPERATIONS' });
   const params = await searchParams;
   const search = searchTerm(params?.q);
   const stockCursor = parseCursor(params?.stock_cursor);
   const productCursor = parseCursor(params?.product_cursor);
-  const [stock, products] = await Promise.all([
+  const [stock, products, formulaIngredients, catalogueCandidates] = await Promise.all([
     query(`
       SELECT s.*,i.created_at
       FROM inventory_stock s JOIN inventory_items i ON i.id=s.id
@@ -27,6 +27,21 @@ export default async function Inventory({ searchParams }) {
         AND ($2::timestamptz IS NULL OR (p.created_at,p.id)<($2::timestamptz,$3::uuid))
       ORDER BY p.created_at DESC,p.id DESC LIMIT 51
     `, [search, productCursor?.timestamp || null, productCursor?.id || null]),
+    query(`
+      SELECT ingredient.id,ingredient.public_id,ingredient.name,ingredient.active,
+             ii.sku,ii.name inventory_name,ii.unit,ii.active inventory_active
+      FROM formula_ingredients ingredient
+      JOIN inventory_items ii ON ii.id=ingredient.inventory_item_id
+      ORDER BY ingredient.active DESC,lower(ingredient.name),ii.sku,ingredient.id
+      LIMIT 500
+    `),
+    query(`
+      SELECT id,public_id,sku,name,unit
+      FROM inventory_items
+      WHERE active=true
+      ORDER BY lower(name),sku,id
+      LIMIT 500
+    `),
   ]);
   return <AdminShell staff={staff}>
     <div className="section-head"><div><div className="tag">Immutable stock ledger</div><h1>Inventory</h1></div></div>
@@ -62,6 +77,35 @@ export default async function Inventory({ searchParams }) {
       </form>
       <div className="table-wrap" style={{marginTop:16}}><table><thead><tr><th>Product</th><th>Stock mapping</th></tr></thead><tbody>{products.rows.slice(0,50).map((product) => <tr key={product.id}><td>{product.sku} · {product.name}</td><td>{product.inventory_sku ? `${product.inventory_quantity} ${product.inventory_unit} of ${product.inventory_sku}` : 'Not mapped'}</td></tr>)}</tbody></table></div>
       {products.rows.length > 50 && <div style={{marginTop:16}}><a className="btn secondary" href={`/admin/inventory?${new URLSearchParams({ ...(search ? {q:search} : {}), product_cursor:encodeCursor(products.rows[49]) }).toString()}`}>Next product page</a></div>}
+    </section>
+    <div style={{height:20}}/>
+    <section className="card stack">
+      <div><h2>Formula ingredient catalogue</h2><p className="muted">Only active catalogue entries appear in the Vaidya recommendation dropdown. Each entry stays linked to its canonical inventory unit.</p></div>
+      <form action="/api/admin/inventory" method="post" className="row">
+        <input type="hidden" name="action" value="upsert_formula_ingredient"/>
+        <select name="item_ref" required defaultValue="" style={{flex:'2 1 280px'}}>
+          <option value="" disabled>Select inventory item</option>
+          {catalogueCandidates.rows.map((item) => <option value={item.id} key={item.id}>{item.sku} · {item.name} ({item.unit})</option>)}
+        </select>
+        <input name="ingredient_name" maxLength={120} placeholder="Display name (defaults to inventory name)" style={{flex:'2 1 260px'}}/>
+        <button className="btn secondary">Add or reactivate</button>
+      </form>
+      {formulaIngredients.rows.length ? <div className="table-wrap"><table>
+        <thead><tr><th>Ingredient</th><th>Inventory mapping</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>{formulaIngredients.rows.map((ingredient) => <tr key={ingredient.id}>
+          <td><strong>{ingredient.name}</strong><div className="small muted">{ingredient.public_id}</div></td>
+          <td>{ingredient.sku} · {ingredient.inventory_name} · {ingredient.unit}</td>
+          <td>{ingredient.active && ingredient.inventory_active ? 'Active' : 'Inactive'}</td>
+          <td><form action="/api/admin/inventory" method="post">
+            <input type="hidden" name="action" value="set_formula_ingredient_active"/>
+            <input type="hidden" name="ingredient_id" value={ingredient.id}/>
+            <input type="hidden" name="active" value={ingredient.active ? 'false' : 'true'}/>
+            <button className={`btn ${ingredient.active ? 'danger' : 'secondary'}`} disabled={!ingredient.active && !ingredient.inventory_active}>
+              {ingredient.active ? 'Deactivate' : 'Activate'}
+            </button>
+          </form></td>
+        </tr>)}</tbody>
+      </table></div> : <div className="notice">No formula ingredients exist yet. Add an inventory item above, then catalogue it here.</div>}
     </section>
     <div style={{height:20}}/>
     <div className="table-wrap"><table><thead><tr><th>SKU</th><th>Item</th><th>Available</th><th>Unit</th><th>Reorder level</th></tr></thead><tbody>{stock.rows.slice(0,50).map((item) => <tr key={item.id}><td>{item.sku}</td><td>{item.name}</td><td><strong>{item.available_quantity}</strong></td><td>{item.unit}</td><td>{item.reorder_level}</td></tr>)}</tbody></table></div>

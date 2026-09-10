@@ -8,7 +8,7 @@ import { HttpError, errorResponse } from '@/lib/http';
 export async function POST(request) {
   let staff = null;
   try {
-    staff = await requireStaff({ request, roles: ['SUPPORT', 'VAIDYA'] });
+    staff = await requireStaff({ request, capability: 'WHATSAPP' });
     const form = await request.formData();
     const conversationId = String(form.get('conversation_id') || '');
     const messageKey = String(form.get('message_key') || '');

@@ -13,7 +13,7 @@ function SafetyStatus({ reviewRequired, urgent }) {
 }
 
 export default async function Consultations({ searchParams }) {
-  const staff = await requireStaff({ roles: ['VAIDYA', 'OPERATIONS'] });
+  const staff = await requireStaff({ capability: 'CONSULTATIONS_VIEW' });
   const requested = await searchParams;
   const concernFilter = typeof requested?.concern === 'string' ? requested.concern : '';
   const requestedSafety = typeof requested?.safety === 'string' ? requested.safety : '';

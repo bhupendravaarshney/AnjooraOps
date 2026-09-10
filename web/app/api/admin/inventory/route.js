@@ -6,7 +6,14 @@ import { writeAudit } from '@/lib/audit';
 import { HttpError, errorResponse } from '@/lib/http';
 import { normalizeUnit } from '@/lib/units';
 
-const ACTIONS = new Set(['create_item', 'map_product', 'receipt', 'adjustment']);
+const ACTIONS = new Set([
+  'create_item',
+  'map_product',
+  'receipt',
+  'adjustment',
+  'upsert_formula_ingredient',
+  'set_formula_ingredient_active',
+]);
 
 function boundedText(value, field, maximum, required = false) {
   const text = String(value || '').trim();
@@ -19,7 +26,7 @@ export async function POST(request) {
   let staff = null;
   let action = 'UNKNOWN';
   try {
-    staff = await requireStaff({ request, roles: ['OPERATIONS'] });
+    staff = await requireStaff({ request, capability: 'OPERATIONS' });
     const form = await request.formData();
     action = String(form.get('action') || '').trim().toLowerCase();
     if (!ACTIONS.has(action)) throw new HttpError(422, 'Unsupported inventory action.', 'UNKNOWN_ACTION');
@@ -91,6 +98,63 @@ export async function POST(request) {
           priorState: product.inventory_item_id ? `${product.inventory_item_id}:${product.inventory_quantity}` : null,
           resultingState: `${item.id}:${quantity}`,
           payload: { inventory_item_id: item.id, sku: item.sku, quantity, unit: item.unit },
+        });
+      });
+    } else if (action === 'upsert_formula_ingredient') {
+      const itemReference = boundedText(form.get('item_ref') || form.get('item_id'), 'Inventory item', 100, true);
+      const requestedName = boundedText(form.get('ingredient_name'), 'Ingredient name', 120);
+      await withTransaction(async (db) => {
+        const item = (await db.query(`
+          SELECT * FROM inventory_items
+          WHERE id::text=$1 OR public_id=$1 OR upper(sku)=upper($1)
+          LIMIT 1 FOR UPDATE
+        `, [itemReference])).rows[0];
+        if (!item?.active) throw new HttpError(409, 'The inventory item is unavailable.', 'ITEM_UNAVAILABLE');
+        const name = requestedName || item.name;
+        if (name.length < 2) throw new HttpError(422, 'Ingredient name must contain at least two characters.', 'VALIDATION_ERROR');
+        await db.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, [`formula-ingredient:${item.id}`]);
+        const existing = (await db.query(`SELECT * FROM formula_ingredients WHERE inventory_item_id=$1 FOR UPDATE`, [item.id])).rows[0];
+        const ingredient = existing
+          ? (await db.query(`
+              UPDATE formula_ingredients
+              SET name=$1,active=true,updated_by=$2,updated_at=now()
+              WHERE id=$3 RETURNING *
+            `, [name, staff.id, existing.id])).rows[0]
+          : (await db.query(`
+              INSERT INTO formula_ingredients(
+                id,public_id,inventory_item_id,name,created_by,updated_by
+              ) VALUES($1,$2,$3,$4,$5,$5) RETURNING *
+            `, [uuid(), publicId('ANJ-FING'), item.id, name, staff.id])).rows[0];
+        await writeAudit(db, {
+          request, staffId: staff.id, entityType: 'FORMULA_INGREDIENT', entityId: ingredient.id,
+          action: existing ? 'UPDATED' : 'CREATED',
+          priorState: existing ? JSON.stringify({ name: existing.name, active: existing.active }) : null,
+          resultingState: JSON.stringify({ name: ingredient.name, active: ingredient.active }),
+          payload: { inventory_item_id: item.id, sku: item.sku, unit: item.unit },
+        });
+      });
+    } else if (action === 'set_formula_ingredient_active') {
+      const ingredientReference = boundedText(form.get('ingredient_ref') || form.get('ingredient_id'), 'Formula ingredient', 100, true);
+      const activeValue = String(form.get('active') || '').trim().toLowerCase();
+      if (!['true', 'false'].includes(activeValue)) throw new HttpError(422, 'Ingredient active state is invalid.', 'VALIDATION_ERROR');
+      const active = activeValue === 'true';
+      await withTransaction(async (db) => {
+        const ingredient = (await db.query(`
+          SELECT ingredient.*,ii.sku,ii.active inventory_active
+          FROM formula_ingredients ingredient
+          JOIN inventory_items ii ON ii.id=ingredient.inventory_item_id
+          WHERE ingredient.id::text=$1 OR ingredient.public_id=$1
+          LIMIT 1 FOR UPDATE OF ingredient
+        `, [ingredientReference])).rows[0];
+        if (!ingredient) throw new HttpError(404, 'Formula ingredient not found.', 'NOT_FOUND');
+        if (active && !ingredient.inventory_active) {
+          throw new HttpError(409, 'Reactivate the inventory item before this formula ingredient.', 'ITEM_UNAVAILABLE');
+        }
+        await db.query(`UPDATE formula_ingredients SET active=$1,updated_by=$2,updated_at=now() WHERE id=$3`, [active, staff.id, ingredient.id]);
+        await writeAudit(db, {
+          request, staffId: staff.id, entityType: 'FORMULA_INGREDIENT', entityId: ingredient.id,
+          action: active ? 'ACTIVATED' : 'DEACTIVATED',
+          priorState: String(ingredient.active), resultingState: String(active), payload: { sku: ingredient.sku },
         });
       });
     } else {
