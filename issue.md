@@ -1,6 +1,6 @@
 # AnjooraOps Open Issues
 
-**Updated:** 9 September 2026
+**Updated:** 10 September 2026
 **Scope:** Unresolved production launch actions only.
 
 Completed repository implementation and verification tasks have been removed from this file. There are currently **no known repository-owned P0 or P1 defects**. Launch remains **NO-GO** until the eight external gates below have real, dated evidence; local/demo values must not be used to close them.
@@ -9,7 +9,7 @@ Completed repository implementation and verification tasks have been removed fro
 
 | ID | Priority | Remaining external outcome | Owner |
 |---|---:|---|---|
-| LIVE-001 | P0 | Named production staff, rotated passwords, MFA, and approved least privilege | Operations administrator |
+| LIVE-001 | P0 | Named production staff, rotated passwords, and approved least privilege | Operations administrator |
 | LIVE-002 | P0 | Production secrets, URLs, and certificate-verified PostgreSQL | Deployment owner |
 | LIVE-003 | P0 | Verified Meta WhatsApp account, webhook, templates, and live scenario evidence | Messaging owner |
 | LIVE-004 | P0 | Production schedules, alerts, on-call ownership, and incident drill | Operations/DevOps |
@@ -22,11 +22,11 @@ Completed repository implementation and verification tasks have been removed fro
 
 - [ ] Approve the exact production staff register with one named email and smallest suitable role (`ADMIN`, `VAIDYA`, `OPERATIONS`, or `SUPPORT`) per person.
 - [ ] Remove bootstrap credentials from the live runtime, rotate any initially provisioned administrator password, and deactivate test, departed, or unused accounts.
-- [ ] Verify that every active user has changed the temporary password and enrolled authenticator MFA.
+- [ ] Verify that every active user has changed the temporary password.
 - [ ] Verify least privilege with the real accounts; `SUPPORT` must have only Dashboard and WhatsApp operational access.
 - [ ] Run `STAFF_ACTION=audit STAFF_REGISTER_FILE=... npm run staff:manage` against the production database and retain the passing output.
 
-Administrators create and maintain named accounts at `/admin/staff`. The production names, emails, MFA devices, and approval register are required from the operations owner.
+Administrators create and maintain named accounts at `/admin/staff`. The production names, emails, roles, and approval register are required from the operations owner. AnjooraOps uses the named work email as the username, together with the user's password.
 
 ## LIVE-002 — Configure production secrets and database TLS
 

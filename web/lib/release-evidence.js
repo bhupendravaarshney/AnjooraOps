@@ -1,7 +1,6 @@
 export const REQUIRED_RELEASE_CHECKS = Object.freeze([
   'staff_register_approved',
   'staff_passwords_rotated',
-  'staff_mfa_verified',
   'staff_least_privilege_verified',
   'production_secrets_stored',
   'database_tls_verified',

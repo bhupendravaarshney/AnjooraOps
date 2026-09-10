@@ -12,7 +12,6 @@
   "checks": {
     "staff_register_approved": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },
     "staff_passwords_rotated": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },
-    "staff_mfa_verified": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },
     "staff_least_privilege_verified": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },
     "production_secrets_stored": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },
     "database_tls_verified": { "passed": false, "owner": "", "evidence_ref": "", "verified_at": "" },

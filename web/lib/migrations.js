@@ -9,6 +9,7 @@ export const REQUIRED_MIGRATIONS = Object.freeze([
   '008_payment_certification_controls.sql',
   '009_force_staff_credential_revalidation.sql',
   '010_formula_ingredient_catalog.sql',
+  '011_remove_staff_mfa.sql',
 ]);
 
 export function missingRequiredMigrations(appliedNames) {

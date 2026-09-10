@@ -103,7 +103,6 @@ if (process.env.NODE_ENV === 'production') {
       }
     }
     if (process.env.ENABLE_DEMO_FORM === 'true') fail('ENABLE_DEMO_FORM must be false in production.');
-    if (process.env.REQUIRE_STAFF_MFA !== 'true') fail('REQUIRE_STAFF_MFA must be true in production.');
     if (!/^\d{10,15}$/.test(process.env.ANJOORA_WHATSAPP_NUMBER || '') || process.env.ANJOORA_WHATSAPP_NUMBER === '919999999999') {
       fail('ANJOORA_WHATSAPP_NUMBER must contain a non-placeholder country-code number.');
     }

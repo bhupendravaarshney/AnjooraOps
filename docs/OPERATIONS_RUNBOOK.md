@@ -7,13 +7,13 @@ This runbook covers the controls that must operate continuously after deployment
 Before enabling real consultation traffic:
 
 1. Run `npm run config:validate`, `npm run verify`, `npm run build`, and `npm run test:http` against an isolated release environment.
-2. Set a real HTTPS `APP_URL`, independent random application secrets, `REQUIRE_STAFF_MFA=true`, and `ENABLE_DEMO_FORM=false`.
+2. Set a real HTTPS `APP_URL`, independent random application secrets, and `ENABLE_DEMO_FORM=false`.
 3. Choose `PAYMENT_PROVIDER=MANUAL` or configure a real HTTPS payment link and webhook-signing secret.
 4. Configure either all Meta WhatsApp credentials or none. If enabled, approve and test every proactive template.
-5. Provision named staff accounts with least-privilege roles. Complete password rotation and MFA enrollment before granting production access.
+5. Provision named staff accounts with least-privilege roles. Complete password rotation before granting production access.
 6. Confirm PostgreSQL TLS certificate verification, private network access, automated backups, alert destinations, and the retention settings with the privacy owner.
 
-The production environment validator refuses unverified database connections, partial WhatsApp configuration, placeholder secrets or endpoints, insecure external payment URLs, shared core secrets, an enabled demo form, or disabled staff MFA. With `GO_LIVE=true`, it also refuses bootstrap credentials, manual payment, an unversioned payment adapter/event map, missing Meta templates, absent recovery objectives, and missing privacy approval/configuration.
+The production environment validator refuses unverified database connections, partial WhatsApp configuration, placeholder secrets or endpoints, insecure external payment URLs, shared core secrets, or an enabled demo form. With `GO_LIVE=true`, it also refuses bootstrap credentials, manual payment, an unversioned payment adapter/event map, missing Meta templates, absent recovery objectives, and missing privacy approval/configuration.
 
 ## Required schedules
 
@@ -132,7 +132,7 @@ Production intake uses the exact `CONSULTATION_CONSENT_TEXT` identified by `CONS
 
 Copy `docs/release-evidence.example.json` and `docs/staff-register.example.json` to the approved private evidence store. Do not put the real staff register or operational evidence in source control. The record is matched to the deployed release candidate, payment adapter, WhatsApp Business Account, consent version, privacy approval, and recovery objectives. Every release check needs `passed: true`, a named owner, an evidence reference, and a non-future verification timestamp. The release, business, clinical, privacy, and infrastructure owners must each sign after the latest recorded release check.
 
-Run `npm run release:audit` with `GO_LIVE=true`, `STAFF_REGISTER_FILE`, and `RELEASE_EVIDENCE_FILE`. It revalidates production configuration, verified database TLS, migrations, exact active staff membership/roles/password rotation/MFA, job freshness, operational backlogs, every evidence item, and all five sign-offs. A failed audit is a no-go decision.
+Run `npm run release:audit` with `GO_LIVE=true`, `STAFF_REGISTER_FILE`, and `RELEASE_EVIDENCE_FILE`. It revalidates production configuration, verified database TLS, migrations, exact active staff membership/roles/password rotation, job freshness, operational backlogs, every evidence item, and all five sign-offs. A failed audit is a no-go decision.
 
 ## Incident actions
 
@@ -160,9 +160,9 @@ Run `npm run release:audit` with `GO_LIVE=true`, `STAFF_REGISTER_FILE`, and `REL
 ### Suspected credential compromise
 
 1. Rotate the affected integration, cron, payment, Meta, database, or session secret.
-2. Revoke staff sessions and reset affected staff passwords; require MFA again where appropriate.
+2. Revoke staff sessions and reset affected staff passwords.
 3. Review login and mutation audit events by correlation ID and time window.
-4. If `SESSION_SECRET` changes, expect existing sessions and encrypted MFA secrets to become unusable; coordinate staff recovery before rotation.
+4. If `SESSION_SECRET` changes, expect existing sessions to become unusable; coordinate staff recovery before rotation.
 
 ## External controls still requiring an owner
 

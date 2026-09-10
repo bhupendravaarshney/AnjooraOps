@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers';
 import { withTransaction } from '@/lib/db';
-import { hashPassword, verifyPassword, randomToken, tokenHash, decryptSecret, verifyTotp } from '@/lib/security';
+import { hashPassword, verifyPassword, randomToken, tokenHash } from '@/lib/security';
 import { uuid } from '@/lib/ids';
 import { sessionCookieOptions } from '@/lib/auth';
 import { writeAudit } from '@/lib/audit';
@@ -17,7 +17,6 @@ export async function POST(request) {
     const form = await request.formData();
     const email = String(form.get('email') || '').trim().toLowerCase().slice(0, 254);
     const password = String(form.get('password') || '');
-    const mfaCode = String(form.get('mfa_code') || '');
     const result = await withTransaction(async (db) => {
       const user = (await db.query(`SELECT * FROM staff_users WHERE email=$1 AND active=true FOR UPDATE`, [email])).rows[0];
       if (user?.locked_until && new Date(user.locked_until) > new Date()) {
@@ -25,11 +24,7 @@ export async function POST(request) {
         return { ok: false, error: 'locked' };
       }
       const passwordValid = verifyPassword(password, user?.password_hash || DUMMY_PASSWORD_HASH);
-      let mfaValid = true;
-      if (passwordValid && user?.mfa_enabled) {
-        try { mfaValid = verifyTotp(decryptSecret(user.mfa_secret_encrypted), mfaCode); } catch { mfaValid = false; }
-      }
-      if (!user || !passwordValid || !mfaValid) {
+      if (!user || !passwordValid) {
         if (user) {
           const failures = Number(user.failed_login_count || 0) + 1;
           await db.query(`
@@ -40,9 +35,9 @@ export async function POST(request) {
         }
         await writeAudit(db, {
           request, entityType: 'STAFF_USER', entityId: user?.id || null, action: 'LOGIN', outcome: 'REJECTED',
-          payload: { reason: passwordValid && user?.mfa_enabled ? 'MFA_FAILED' : 'CREDENTIALS_FAILED', email_hash: hashPrivateValue(email) },
+          payload: { reason: 'CREDENTIALS_FAILED', email_hash: hashPrivateValue(email) },
         });
-        return { ok: false, error: user?.mfa_enabled && passwordValid ? 'mfa' : 'credentials' };
+        return { ok: false, error: 'credentials' };
       }
 
       const token = randomToken();
@@ -61,13 +56,16 @@ export async function POST(request) {
         hashPrivateValue(request.headers.get('user-agent') || 'unknown'),
       ]);
       await db.query(`UPDATE staff_users SET failed_login_count=0,locked_until=NULL,last_login_at=now(),updated_at=now() WHERE id=$1`, [user.id]);
-      await writeAudit(db, { request, staffId: user.id, entityType: 'STAFF_USER', entityId: user.id, action: 'LOGIN', resultingState: 'AUTHENTICATED', payload: { mfa: user.mfa_enabled } });
-      return { ok: true, token, expiresAt, mustRotate: user.must_rotate_password, needsMfa: process.env.REQUIRE_STAFF_MFA === 'true' && !user.mfa_enabled };
+      await writeAudit(db, {
+        request, staffId: user.id, entityType: 'STAFF_USER', entityId: user.id,
+        action: 'LOGIN', resultingState: 'AUTHENTICATED', payload: { authentication: 'PASSWORD' },
+      });
+      return { ok: true, token, expiresAt, mustRotate: user.must_rotate_password };
     });
     if (!result.ok) return sameOriginRedirect(`/admin/login?error=${result.error}`);
     const jar = await cookies();
     jar.set({ ...sessionCookieOptions(result.expiresAt), value: result.token });
-    const destination = result.mustRotate ? '/admin/account/password' : result.needsMfa ? '/admin/account/mfa' : '/admin';
+    const destination = result.mustRotate ? '/admin/account/password' : '/admin';
     return sameOriginRedirect(destination);
   } catch (error) {
     return errorResponse(error);

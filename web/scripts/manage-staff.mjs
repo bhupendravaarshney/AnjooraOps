@@ -67,7 +67,7 @@ async function loadExpectedRegister() {
 
 async function staffRows(client) {
   return (await client.query(`
-    SELECT id,email,name,role,active,must_rotate_password,mfa_enabled,
+    SELECT id,email,name,role,active,must_rotate_password,
            password_changed_at,last_login_at,created_at,updated_at
     FROM staff_users
     ORDER BY active DESC,lower(email),id
@@ -81,7 +81,6 @@ function printableRows(rows) {
     role: row.role,
     active: row.active,
     password_rotated: !row.must_rotate_password,
-    mfa: row.mfa_enabled,
     last_login_at: row.last_login_at ? new Date(row.last_login_at).toISOString() : 'never',
   }));
 }
@@ -94,10 +93,7 @@ try {
     console.table(printableRows(rows));
     if (action === 'audit') {
       const expectedRegister = await loadExpectedRegister();
-      const findings = staffComplianceFindings(rows, {
-        expectedRegister,
-        requireMfa: process.env.REQUIRE_STAFF_MFA === 'true',
-      });
+      const findings = staffComplianceFindings(rows, { expectedRegister });
       if (!expectedRegister) {
         findings.push('STAFF_REGISTER_FILE is not set, so the active accounts cannot be compared with the approved production register.');
       }
@@ -106,7 +102,7 @@ try {
         for (const finding of findings) console.error(`- ${finding}`);
         process.exitCode = 1;
       } else {
-        console.log('Staff compliance audit passed: the active database accounts exactly match the approved register, with rotated passwords and MFA.');
+        console.log('Staff compliance audit passed: the active database accounts exactly match the approved register, with rotated passwords.');
       }
     }
   } else {
@@ -115,8 +111,8 @@ try {
       let user;
       if (action === 'create') {
         user = (await client.query(`
-          INSERT INTO staff_users(id,email,name,password_hash,role,active,must_rotate_password,mfa_enabled,mfa_secret_encrypted)
-          VALUES($1,$2,$3,$4,$5,true,true,false,NULL)
+          INSERT INTO staff_users(id,email,name,password_hash,role,active,must_rotate_password)
+          VALUES($1,$2,$3,$4,$5,true,true)
           RETURNING id
         `, [crypto.randomUUID(), email, name, hashPassword(password), role])).rows[0];
       } else {
@@ -133,8 +129,7 @@ try {
         } else if (action === 'recover') {
           await client.query(`
             UPDATE staff_users SET password_hash=$1,active=true,must_rotate_password=true,
-              mfa_enabled=false,mfa_secret_encrypted=NULL,failed_login_count=0,
-              locked_until=NULL,updated_at=now()
+              failed_login_count=0,locked_until=NULL,updated_at=now()
             WHERE id=$2
           `, [hashPassword(password), user.id]);
         } else if (action === 'deactivate') {

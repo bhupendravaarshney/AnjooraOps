@@ -52,7 +52,6 @@ function looksLikeTestAccount(account) {
 
 export function staffComplianceFindings(accounts, {
   expectedRegister = null,
-  requireMfa = true,
 } = {}) {
   const findings = [];
   const rows = Array.isArray(accounts) ? accounts : [];
@@ -63,7 +62,6 @@ export function staffComplianceFindings(accounts, {
     const label = account.email || account.id || 'unknown staff account';
     if (!STAFF_ROLES.includes(account.role)) findings.push(`${label} has an invalid role.`);
     if (account.must_rotate_password) findings.push(`${label} still has a temporary password.`);
-    if (requireMfa && !account.mfa_enabled) findings.push(`${label} has not enrolled authenticator MFA.`);
     if (looksLikeTestAccount(account)) findings.push(`${label} appears to be a shared, bootstrap, demo, or test account.`);
   }
 

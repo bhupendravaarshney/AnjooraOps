@@ -44,7 +44,7 @@ try {
   const [migrationResult, staffResult, jobResult, counterResult] = await Promise.all([
     client.query(`SELECT name FROM schema_migrations ORDER BY name`),
     client.query(`
-      SELECT id,email,name,role,active,must_rotate_password,mfa_enabled
+      SELECT id,email,name,role,active,must_rotate_password
       FROM staff_users ORDER BY active DESC,lower(email),id
     `),
     client.query(`
@@ -69,7 +69,7 @@ try {
   ]);
   const missingMigrations = missingRequiredMigrations(migrationResult.rows.map((row) => row.name));
   if (missingMigrations.length) findings.push(`The release database is missing migrations: ${missingMigrations.join(', ')}.`);
-  findings.push(...staffComplianceFindings(staffResult.rows, { expectedRegister: staffRegister, requireMfa: true }));
+  findings.push(...staffComplianceFindings(staffResult.rows, { expectedRegister: staffRegister }));
   findings.push(...jobFreshnessIssues(jobResult.rows).map((issue) => issue.message));
   findings.push(...backlogIssues(counterResult.rows[0]).map((issue) => `${issue.code}: ${issue.message} Count=${issue.count}.`));
 } finally {

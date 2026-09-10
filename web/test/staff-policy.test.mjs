@@ -9,7 +9,7 @@ import {
 
 const compliant = {
   id: '1', email: 'asha@anjoora.in', name: 'Asha Rao', role: 'VAIDYA', active: true,
-  must_rotate_password: false, mfa_enabled: true,
+  must_rotate_password: false,
 };
 
 test('normalizes staff identity fields and rejects invalid roles', () => {
@@ -18,18 +18,17 @@ test('normalizes staff identity fields and rejects invalid roles', () => {
   assert.throws(() => normalizeStaffRole('OWNER'), /STAFF_ROLE/);
 });
 
-test('staff compliance requires rotation, MFA, named accounts, and exact register membership', () => {
+test('staff compliance requires rotation, named accounts, and exact register membership', () => {
   assert.deepEqual(staffComplianceFindings([compliant], {
     expectedRegister: [{ email: compliant.email, name: compliant.name, role: compliant.role }],
   }), []);
 
   const findings = staffComplianceFindings([
-    { ...compliant, email: 'bootstrap@example.com', name: 'ANJOORA Admin', must_rotate_password: true, mfa_enabled: false },
+    { ...compliant, email: 'bootstrap@example.com', name: 'ANJOORA Admin', must_rotate_password: true },
   ], {
     expectedRegister: [{ email: compliant.email, name: compliant.name, role: compliant.role }],
   });
   assert.ok(findings.some((finding) => finding.includes('temporary password')));
-  assert.ok(findings.some((finding) => finding.includes('authenticator MFA')));
   assert.ok(findings.some((finding) => finding.includes('shared, bootstrap, demo, or test')));
   assert.ok(findings.some((finding) => finding.includes('missing or inactive')));
   assert.ok(findings.some((finding) => finding.includes('absent from the approved staff register')));
@@ -45,7 +44,7 @@ test('staff register rejects duplicate accounts', () => {
 test('staff compliance rejects shared role mailboxes even when other controls pass', () => {
   const findings = staffComplianceFindings([{
     id: 'shared', email: 'support@anjoora.in', name: 'Support Team', role: 'SUPPORT',
-    active: true, must_rotate_password: false, mfa_enabled: true,
+    active: true, must_rotate_password: false,
   }]);
   assert.ok(findings.some((finding) => finding.includes('shared, bootstrap, demo, or test account')));
 });

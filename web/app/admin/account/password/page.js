@@ -3,7 +3,7 @@ import { requireStaff } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
 export default async function PasswordPage({ searchParams }) {
-  const staff = await requireStaff({ allowPasswordRotation: true, allowMfaEnrollment: true });
+  const staff = await requireStaff({ allowPasswordRotation: true });
   const params = await searchParams;
   return <main className="container" style={{maxWidth:680,paddingTop:48}}><section className="card stack">
     <div><div className="brand">ANJOORA</div><div className="tag">Account security</div></div>

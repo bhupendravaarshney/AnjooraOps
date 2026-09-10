@@ -17,7 +17,7 @@ export async function getStaff() {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   const { rows } = await query(`
-    SELECT u.id, u.email, u.name, u.role, u.must_rotate_password, u.mfa_enabled,
+    SELECT u.id, u.email, u.name, u.role, u.must_rotate_password,
            s.id session_id, s.expires_at
     FROM sessions s
     JOIN staff_users u ON u.id = s.staff_user_id
@@ -31,7 +31,7 @@ export async function getStaff() {
   return staff;
 }
 
-export async function requireStaff({ request = null, roles = null, capability = null, allowPasswordRotation = false, allowMfaEnrollment = false } = {}) {
+export async function requireStaff({ request = null, roles = null, capability = null, allowPasswordRotation = false } = {}) {
   const staff = await getStaff();
   if (!staff) {
     if (request) throw new HttpError(401, 'Authentication is required.', 'AUTH_REQUIRED');
@@ -40,10 +40,6 @@ export async function requireStaff({ request = null, roles = null, capability = 
   if (staff.must_rotate_password && !allowPasswordRotation) {
     if (request) throw new HttpError(403, 'Password rotation is required.', 'PASSWORD_ROTATION_REQUIRED');
     redirect('/admin/account/password');
-  }
-  if (process.env.REQUIRE_STAFF_MFA === 'true' && !staff.mfa_enabled && !allowMfaEnrollment) {
-    if (request) throw new HttpError(403, 'MFA enrollment is required.', 'MFA_ENROLLMENT_REQUIRED');
-    redirect('/admin/account/mfa');
   }
   if (roles?.length && staff.role !== 'ADMIN' && !roles.includes(staff.role)) {
     if (request) throw new HttpError(403, 'You do not have permission for this action.', 'FORBIDDEN');

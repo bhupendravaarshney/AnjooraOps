@@ -221,7 +221,6 @@ be replaced; they are not valid values.
 | `CRON_SECRET` | A third different random value of at least 32 characters |
 | `BOOTSTRAP_ADMIN_EMAIL` | The real initial administrator email |
 | `BOOTSTRAP_ADMIN_PASSWORD` | A unique 32+ character temporary password containing uppercase, lowercase, a number, and a symbol |
-| `REQUIRE_STAFF_MFA` | `true` |
 | `ENABLE_DEMO_FORM` | `false` |
 | `ANJOORA_WHATSAPP_NUMBER` | The real country-code number, digits only, 10-15 digits |
 | `WHATSAPP_FOLIO_MODE` | `full` |
@@ -338,13 +337,12 @@ Then complete the administrator setup:
 1. Open `https://YOUR-SERVICE.up.railway.app/admin/login`.
 2. Sign in with the one-time bootstrap administrator.
 3. Replace the temporary password when prompted.
-4. Enroll authenticator MFA.
-5. Open `/admin/staff` and create each approved named staff account with the
+4. Open `/admin/staff` and create each approved named staff account with the
    smallest suitable role.
-6. Verify that a `SUPPORT` account can access only Dashboard and WhatsApp.
-7. Delete `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from Railway
+5. Verify that a `SUPPORT` account can access only Dashboard and WhatsApp.
+6. Delete `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` from Railway
    and redeploy.
-8. Confirm the rotated administrator login still works after that redeploy.
+7. Confirm the rotated administrator login still works after that redeploy.
 
 Removing bootstrap variables does not delete the persisted administrator.
 Startup migrations are idempotent, and the bootstrap insert never changes an
@@ -449,7 +447,7 @@ Before handling live customer data:
 8. Run the release audit against the immutable release candidate.
 
 Keep `GO_LIVE=false` until the payment provider, complete Meta configuration,
-approved privacy/consent values, recovery objectives, staff MFA/least privilege,
+approved privacy/consent values, recovery objectives, staff least privilege,
 monitoring, restore evidence, end-to-end staging evidence, and five owner
 sign-offs are complete.
 

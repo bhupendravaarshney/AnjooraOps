@@ -13,7 +13,7 @@ const roleAccess = {
 };
 
 const statusMessages = {
-  created: 'Staff account created. The temporary password must be changed at first login, followed by MFA enrollment when required.',
+  created: 'Staff account created. The temporary password must be changed at first login.',
   updated: 'Staff identity and role updated; existing sessions were revoked.',
   reset: 'Temporary password reset; existing sessions were revoked and password rotation is required.',
   deactivated: 'Staff account deactivated and all sessions revoked.',
@@ -23,7 +23,7 @@ export default async function StaffManagement({ searchParams }) {
   const currentStaff = await requireStaff({ capability: 'STAFF_MANAGEMENT' });
   const params = await searchParams;
   const staff = (await query(`
-    SELECT id,email,name,role,active,must_rotate_password,mfa_enabled,
+    SELECT id,email,name,role,active,must_rotate_password,
            last_login_at,password_changed_at,created_at,updated_at
     FROM staff_users
     ORDER BY active DESC,lower(name),lower(email),id
@@ -62,7 +62,7 @@ export default async function StaffManagement({ searchParams }) {
         const isCurrent = user.id === currentStaff.id;
         return <tr key={user.id}>
           <td><strong>{user.name}</strong><div className="small muted">{user.email}</div><div className="small muted">{user.role}</div></td>
-          <td>{user.active ? 'Active' : 'Inactive'} · {user.must_rotate_password ? 'Rotation required' : 'Password rotated'} · {user.mfa_enabled ? 'MFA enabled' : 'MFA pending'}<div className="small muted">Last login: {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</div></td>
+          <td>{user.active ? 'Active' : 'Inactive'} · {user.must_rotate_password ? 'Rotation required' : 'Password rotated'}<div className="small muted">Last login: {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</div></td>
           <td>{isCurrent ? <span className="small muted">Use your account pages for your own security settings.</span> : <form action="/api/admin/staff" method="post" className="stack">
             <input type="hidden" name="action" value="update"/><input type="hidden" name="staff_id" value={user.id}/>
             <div className="field"><input name="name" defaultValue={user.name} required minLength={2} maxLength={100} aria-label={`Name for ${user.email}`}/></div>

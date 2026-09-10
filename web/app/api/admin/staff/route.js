@@ -40,15 +40,14 @@ export async function POST(request) {
         const password = temporaryPassword(form);
         const created = (await db.query(`
           INSERT INTO staff_users(
-            id,email,name,password_hash,role,active,must_rotate_password,
-            mfa_enabled,mfa_secret_encrypted
-          ) VALUES($1,$2,$3,$4,$5,true,true,false,NULL)
-          RETURNING id,email,name,role,active,must_rotate_password,mfa_enabled
+            id,email,name,password_hash,role,active,must_rotate_password
+          ) VALUES($1,$2,$3,$4,$5,true,true)
+          RETURNING id,email,name,role,active,must_rotate_password
         `, [uuid(), email, name, hashPassword(password), role])).rows[0];
         await writeAudit(db, {
           request, staffId: administrator.id, entityType: 'STAFF_USER', entityId: created.id,
           action: 'CREATED', resultingState: role,
-          payload: { role, password_rotation_required: true, mfa_enrollment_required: process.env.REQUIRE_STAFF_MFA === 'true' },
+          payload: { role, password_rotation_required: true },
         });
         return { status: 'created' };
       }

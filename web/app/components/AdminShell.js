@@ -18,7 +18,7 @@ export default function AdminShell({ staff, children }) {
     <header className="topbar">
       <div><div className="brand">ANJOORA</div><div className="tag">Operations Console</div></div>
       <nav className="nav">{links.filter(([, , capability]) => roleCan(staff?.role, capability)).map(([href, label]) => <a href={href} key={href}>{label}</a>)}</nav>
-      <div className="row"><a className="small" href="/admin/account/sessions">{staff?.name} · {staff?.role}</a><a className="small" href="/admin/account/mfa">MFA</a><form action="/api/auth/logout" method="post"><button className="btn secondary" type="submit">Logout</button></form></div>
+      <div className="row"><a className="small" href="/admin/account/sessions">{staff?.name} · {staff?.role}</a><form action="/api/auth/logout" method="post"><button className="btn secondary" type="submit">Logout</button></form></div>
     </header>
     <main className="container">{children}</main>
   </>;

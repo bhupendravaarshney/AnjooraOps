@@ -105,10 +105,9 @@ The staff endpoint supports `create`, `update`, `reset`, and `deactivate`. It re
 
 ## Authentication endpoints
 
-- `POST /api/auth/login`: same-origin login, database-backed IP throttling, account lockout, and optional TOTP proof.
+- `POST /api/auth/login`: same-origin email/password login, database-backed IP throttling, and account lockout.
 - `POST /api/auth/logout`: removes the current server-side session.
 - `POST /api/auth/password`: verifies the current password, enforces policy, rotates the password, and revokes all sessions.
-- `POST /api/auth/mfa`: enables TOTP after code proof. Disabling requires password plus code proof and is rejected while mandatory staff MFA is enabled; audited account recovery is used instead.
 - `POST /api/auth/sessions`: revokes an authorized session.
 
 ## Protected jobs

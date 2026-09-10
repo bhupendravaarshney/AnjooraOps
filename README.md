@@ -20,7 +20,7 @@ For step-by-step customer and staff instructions, see the [English and Hindi use
 - Dispatch, AWB and delivered state.
 - Delivery-triggered refill timing.
 - Refill choices: same, modify, stop.
-- Role-based staff access, an admin-only Staff screen, throttled login, forced password rotation, authenticator MFA, and session management.
+- Role-based staff access, an admin-only Staff screen, password-only login, throttling, forced password rotation, and session management.
 - Cursor search/pagination, verified privacy requests, configurable retention, audit coverage, and a durable message outbox.
 - Docker Compose, Dockerfile and Railway config.
 
@@ -336,7 +336,7 @@ STAFF_OPERATOR="Named Administrator" STAFF_ACTION=deactivate STAFF_EMAIL=person@
 STAFF_ACTION=list npm run staff:manage
 ```
 
-`recover` revokes sessions, replaces the password, clears the old authenticator, and forces password rotation plus new MFA enrollment. When MFA is mandatory it cannot be self-disabled. For the production audit, copy `docs/staff-register.example.json` to the approved private evidence store, list every expected active account, and run:
+`recover` revokes sessions, replaces the password, and forces password rotation. For the production audit, copy `docs/staff-register.example.json` to the approved private evidence store, list every expected active account, and run:
 
 ```bash
 STAFF_ACTION=audit STAFF_REGISTER_FILE=/secure/path/staff-register.json npm run staff:manage
@@ -460,7 +460,7 @@ Before live customer use:
 - replace bootstrap admin password
 - use a long random `SESSION_SECRET`
 - use different random integration and cron secrets
-- require password rotation and MFA for every staff account
+- require password rotation for every staff account
 - configure managed PostgreSQL backups
 - enable verified PostgreSQL TLS and provide the provider CA when required
 - configure a permanent Meta system-user access token
@@ -479,7 +479,7 @@ The customer site obtains the current consent text/version from `GET /api/v1/con
 
 For a provider-managed restore, restore into an isolated database and run `npm run ops:restore-validate` with the documented `RESTORE_*` evidence variables. This is separate from the local Compose `npm run ops:restore-test` drill.
 
-Copy `docs/release-evidence.example.json` to the approved private evidence store and attach dated evidence/owners for every check. The final command combines strict configuration validation, verified-TLS database access, migration checks, exact staff-register/MFA validation, job freshness, alert backlog checks, and required sign-offs:
+Copy `docs/release-evidence.example.json` to the approved private evidence store and attach dated evidence/owners for every check. The final command combines strict configuration validation, verified-TLS database access, migration checks, exact staff-register/password-rotation validation, job freshness, alert backlog checks, and required sign-offs:
 
 ```bash
 GO_LIVE=true \

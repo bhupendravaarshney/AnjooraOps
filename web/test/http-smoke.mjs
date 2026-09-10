@@ -138,8 +138,8 @@ try {
     VALUES($1,$2,'Smoke Support',$3,'SUPPORT',false)
   `, [supportStaffId, supportEmail, passwordHash]);
   await client.query(`
-    INSERT INTO staff_users(id,email,name,password_hash,role,must_rotate_password,mfa_enabled)
-    VALUES($1,$2,'Smoke Administrator',$3,'ADMIN',false,true)
+    INSERT INTO staff_users(id,email,name,password_hash,role,must_rotate_password)
+    VALUES($1,$2,'Smoke Administrator',$3,'ADMIN',false)
   `, [adminStaffId, `admin-${requestMarker}@example.test`, passwordHash]);
   await client.query(`
     INSERT INTO inventory_items(id,public_id,sku,name,unit,reorder_level)
@@ -154,6 +154,16 @@ try {
   assert.equal(health.status, 200, 'Ops health endpoint should return 200.');
   assert.ok(health.headers.get('content-security-policy'), 'Content-Security-Policy header should be present.');
   assert.equal(health.headers.get('x-content-type-options'), 'nosniff', 'X-Content-Type-Options should be nosniff.');
+
+  const loginPage = await fetch(new URL('/admin/login', opsUrl), { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+  assert.equal(loginPage.status, 200, 'The staff login page should be available.');
+  const loginPageBody = await loginPage.text();
+  assert.ok(loginPageBody.includes('name="email"') && loginPageBody.includes('name="password"'), 'Login should request email and password.');
+  assert.ok(!/name="code"|MFA|authenticator/i.test(loginPageBody), 'Login must not render an MFA challenge.');
+  const removedMfaPage = await fetch(new URL('/admin/account/mfa', opsUrl), { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+  assert.equal(removedMfaPage.status, 404, 'The removed MFA account page must stay unavailable.');
+  const removedMfaApi = await fetch(new URL('/api/auth/mfa', opsUrl), { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+  assert.equal(removedMfaApi.status, 404, 'The removed MFA API must stay unavailable.');
 
   const opsConsent = await jsonRequest(new URL('/api/v1/consent', opsUrl));
   assert.equal(opsConsent.response.status, 200, 'Ops consent policy should be available.');
@@ -248,7 +258,7 @@ try {
   assert.equal(createSupport.status, 303, 'An administrator should be able to create a named support account.');
   assertSameOriginRedirect(createSupport, 'Staff creation');
   const managedSupport = await client.query(`
-    SELECT id,role,active,must_rotate_password,mfa_enabled
+    SELECT id,role,active,must_rotate_password
     FROM staff_users WHERE email=$1
   `, [managedSupportEmail]);
   assert.equal(managedSupport.rowCount, 1);
@@ -257,8 +267,7 @@ try {
     role: managedSupport.rows[0].role,
     active: managedSupport.rows[0].active,
     must_rotate_password: managedSupport.rows[0].must_rotate_password,
-    mfa_enabled: managedSupport.rows[0].mfa_enabled,
-  }, { role: 'SUPPORT', active: true, must_rotate_password: true, mfa_enabled: false });
+  }, { role: 'SUPPORT', active: true, must_rotate_password: true });
   const staffCreationAudit = await client.query(`
     SELECT action FROM audit_events
     WHERE entity_type='STAFF_USER' AND entity_id=$1 AND staff_user_id=$2 AND action='CREATED'

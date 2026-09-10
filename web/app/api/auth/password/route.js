@@ -7,7 +7,7 @@ import { HttpError, errorResponse, sameOriginRedirect } from '@/lib/http';
 
 export async function POST(request) {
   try {
-    const staff = await requireStaff({ request, allowPasswordRotation: true, allowMfaEnrollment: true });
+    const staff = await requireStaff({ request, allowPasswordRotation: true });
     const form = await request.formData();
     const currentPassword = String(form.get('current_password') || '');
     const newPassword = String(form.get('new_password') || '');

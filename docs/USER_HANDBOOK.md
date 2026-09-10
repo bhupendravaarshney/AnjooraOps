@@ -110,7 +110,7 @@ Acceptance and payment are separate steps. Accepting says that you agree with th
 
 - Use only the secure payment link sent through the official Anjoora conversation.
 - Check the amount before approving payment.
-- Never share your card PIN, UPI PIN, password, authenticator code, or OTP with Anjoora staff.
+- Never share your card PIN, UPI PIN, password, or OTP with Anjoora staff.
 - Do not pay a different amount requested through an unknown number or personal account.
 - If a payment is debited but the order is not updated, send the order number and provider transaction reference to support. Do not send card or PIN details.
 - Preparation or stock allocation begins only after payment is confirmed in AnjooraOps.
@@ -209,7 +209,7 @@ Only authorized staff may sign in. Always use your own named account.
 
 If you cannot see a screen or action, first check whether it belongs to your role. Do not borrow another person's account.
 
-Administrators create named users from **Staff**. Enter the person's full name, named work email, role, and a temporary password. New users must change that password on first sign-in and enroll MFA when required. The SUPPORT role can use only Dashboard and WhatsApp operational tabs; hiding the other tabs is backed by server-side permission checks.
+Administrators create named users from **Staff**. Enter the person's full name, named work email, role, and a temporary password. New users must change that password on first sign-in. The SUPPORT role can use only Dashboard and WhatsApp operational tabs; hiding the other tabs is backed by server-side permission checks.
 
 The local staff login is `http://localhost:3000/admin/login` after the system owner starts the services. Production may use another secure address.
 
@@ -217,8 +217,7 @@ The local staff login is `http://localhost:3000/admin/login` after the system ow
 
 1. Open the staff login page.
 2. Enter your work email and password.
-3. If MFA is enabled, enter the current six-digit code from your authenticator app.
-4. Select **Sign in**.
+3. Select **Sign in**.
 
 After repeated wrong attempts, the account is locked for 15 minutes. Wait for the lock to end or follow your organization's support procedure; do not keep guessing.
 
@@ -228,14 +227,6 @@ After repeated wrong attempts, the account is locked for 15 minutes. Wait for th
 2. Create a password of 12–128 characters with uppercase, lowercase, number, and symbol.
 3. Confirm it and select **Change password and sign out all sessions**.
 4. Sign in again with the new password.
-
-**Enable MFA**
-
-1. Select **MFA** in the top bar.
-2. Add the shown setup key to a trusted authenticator app.
-3. Enter the current six-digit code.
-4. Select **Verify and enable MFA**.
-5. Never share the setup key or a current code.
 
 **Review sessions**
 
@@ -438,7 +429,7 @@ Never place identity documents, passwords, medical detail, or payment credential
 | Message or situation | Meaning and safe response |
 |---|---|
 | **401 / Authentication required** | Sign in again. Your session may have expired or been revoked. |
-| **403 / No permission** | Your role does not allow the action, password rotation/MFA is required, or the request did not come from the approved page. Do not use another account. |
+| **403 / No permission** | Your role does not allow the action, password rotation is required, or the request did not come from the approved page. Do not use another account. |
 | **409 / State conflict** | Someone or another process already changed the record. Reload it, read the current status, and decide again. |
 | **422 / Validation error** | A field is missing, invalid, too long, or uses an unsupported value/unit. Correct the input rather than retrying unchanged. |
 | Action button is missing | The current role or record status does not allow that action. Check prerequisites. |
@@ -461,7 +452,7 @@ Never place identity documents, passwords, medical detail, or payment credential
 
 **Do not**
 
-- Share accounts, passwords, MFA keys, codes, or provider secrets.
+- Share accounts, passwords, or provider secrets.
 - Bypass payment, stock, safety, or workflow status checks.
 - Mark payment, production, dispatch, or delivery without real evidence.
 - Edit database records directly to correct an operational mistake.
@@ -564,7 +555,7 @@ Order accept करना और payment करना अलग-अलग steps 
 
 - केवल official Anjoora conversation से आया secure payment link इस्तेमाल करें।
 - Payment approve करने से पहले amount जांचें।
-- अपना card PIN, UPI PIN, password, authenticator code या OTP किसी Anjoora staff को न बताएं।
+- अपना card PIN, UPI PIN, password या OTP किसी Anjoora staff को न बताएं।
 - किसी अनजान नंबर या personal account पर अलग amount न भेजें।
 - पैसा कट गया लेकिन order update नहीं हुआ, तो support को order number और provider transaction reference दें। Card/PIN की जानकारी न दें।
 - Payment AnjooraOps में confirm होने के बाद ही तैयारी या stock allocation शुरू होना चाहिए।
@@ -663,7 +654,7 @@ Questionnaire की saved progress उसी browser/device से जुड़
 
 यदि कोई screen/action नहीं दिख रही, तो पहले अपना role देखें। किसी दूसरे व्यक्ति का account इस्तेमाल न करें।
 
-Administrator **Staff** tab से named user बनाता है। Full name, named work email, role और temporary password भरें। नया user पहले login पर password बदलेगा और जरूरी होने पर MFA चालू करेगा। SUPPORT role केवल Dashboard और WhatsApp operational tabs इस्तेमाल कर सकता है; server APIs भी बाकी access रोकती हैं।
+Administrator **Staff** tab से named user बनाता है। Full name, named work email, role और temporary password भरें। नया user पहले login पर password बदलेगा। SUPPORT role केवल Dashboard और WhatsApp operational tabs इस्तेमाल कर सकता है; server APIs भी बाकी access रोकती हैं।
 
 System owner द्वारा services शुरू करने के बाद local staff login `http://localhost:3000/admin/login` है। Production में अलग secure address हो सकता है।
 
@@ -671,8 +662,7 @@ System owner द्वारा services शुरू करने के बा
 
 1. Staff login page खोलें।
 2. Work email और password भरें।
-3. MFA चालू है तो authenticator app का वर्तमान six-digit code भरें।
-4. **Sign in** दबाएं।
+3. **Sign in** दबाएं।
 
 बार-बार गलत login करने पर account 15 मिनट के लिए lock होता है। समय पूरा होने दें या organization की support प्रक्रिया अपनाएं; password guess करते न रहें।
 
@@ -682,14 +672,6 @@ System owner द्वारा services शुरू करने के बा
 2. 12–128 characters का नया password बनाएं जिसमें uppercase, lowercase, number और symbol हों।
 3. Password दोबारा भरकर **Change password and sign out all sessions** दबाएं।
 4. नए password से फिर login करें।
-
-**MFA चालू करें**
-
-1. ऊपर **MFA** चुनें।
-2. दिखाई गई setup key को trusted authenticator app में जोड़ें।
-3. वर्तमान six-digit code भरें।
-4. **Verify and enable MFA** दबाएं।
-5. Setup key या code किसी से share न करें।
 
 **Active sessions देखें**
 
@@ -887,7 +869,7 @@ Verification note में identity document, password, medical detail या p
 | Message/स्थिति | मतलब और क्या करें |
 |---|---|
 | **401 / Authentication required** | फिर login करें। Session expire या revoke हो सकता है। |
-| **403 / No permission** | Role अनुमति नहीं देता, password rotation/MFA बाकी है, या request approved page से नहीं आई। दूसरे का account इस्तेमाल न करें। |
+| **403 / No permission** | Role अनुमति नहीं देता, password rotation बाकी है, या request approved page से नहीं आई। दूसरे का account इस्तेमाल न करें। |
 | **409 / State conflict** | Record किसी और ने/process ने बदल दिया। Page reload करें, current status पढ़ें, फिर निर्णय लें। |
 | **422 / Validation error** | Field missing/invalid/बहुत लंबा है या value/unit supported नहीं है। Input ठीक करें। |
 | Action button नहीं दिख रहा | Current role या record status उस action की अनुमति नहीं देता। Prerequisites देखें। |
@@ -910,7 +892,7 @@ Verification note में identity document, password, medical detail या p
 
 **यह न करें**
 
-- Account, password, MFA key/code या provider secret share न करें।
+- Account, password या provider secret share न करें।
 - Payment, stock, safety या workflow checks bypass न करें।
 - असली evidence के बिना payment, production, dispatch या delivery mark न करें।
 - Operational गलती ठीक करने के लिए direct database edit न करें।

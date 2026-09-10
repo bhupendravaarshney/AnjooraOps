@@ -33,7 +33,6 @@ SESSION_SECRET
 ANJOORA_INTEGRATION_SECRET
 CRON_SECRET
 ANJOORA_WHATSAPP_NUMBER
-REQUIRE_STAFF_MFA=true
 ENABLE_DEMO_FORM=false
 PAYMENT_PROVIDER
 GO_LIVE=false
@@ -82,7 +81,7 @@ Before `GO_LIVE=true`, also set the immutable `RELEASE_CANDIDATE`, business-appr
 
 Bootstrap never silently changes an existing account. The P0 credential-revalidation migration revokes existing sessions and requires every active account present at upgrade time to rotate its password once; new bootstrap accounts also require rotation. Use `npm run staff:manage --workspace=web` with `STAFF_ACTION=list|audit|create|update|reset|recover|deactivate` and the documented `STAFF_*` environment variables for explicit account administration.
 
-The staff tool additionally supports `list`, `audit`, `update`, and `recover`. Every mutation requires a named `STAFF_OPERATOR`; recovery also requires `STAFF_RECOVERY_APPROVAL_REF`. Both are written to the audit event. `audit` compares the database with `STAFF_REGISTER_FILE`; `update` changes the named identity/role and revokes sessions; `recover` revokes sessions and forces both password rotation and MFA re-enrollment.
+The staff tool additionally supports `list`, `audit`, `update`, and `recover`. Every mutation requires a named `STAFF_OPERATOR`; recovery also requires `STAFF_RECOVERY_APPROVAL_REF`. Both are written to the audit event. `audit` compares the database with `STAFF_REGISTER_FILE`; `update` changes the named identity/role and revokes sessions; `recover` revokes sessions and forces password rotation.
 
 ## Docker Compose development
 

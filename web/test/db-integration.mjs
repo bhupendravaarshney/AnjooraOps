@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import pg from 'pg';
 import '../scripts/load-env.mjs';
+import { REQUIRED_MIGRATIONS } from '../lib/migrations.js';
 
 const { Client } = pg;
 if (!process.env.DATABASE_URL) {
@@ -34,7 +35,7 @@ try {
   try {
     const migrationsDir = path.resolve('db/migrations');
     const files = (await fs.readdir(migrationsDir)).filter((file) => file.endsWith('.sql')).sort();
-    assert.deepEqual(files, ['001_init.sql', '002_multi_concern_safety.sql', '003_operational_hardening.sql', '004_followup_constraints.sql', '005_operational_pagination.sql', '006_messaging_lookup_indexes.sql', '007_operational_job_runs.sql', '008_payment_certification_controls.sql', '009_force_staff_credential_revalidation.sql', '010_formula_ingredient_catalog.sql']);
+    assert.deepEqual(files, [...REQUIRED_MIGRATIONS]);
     await db.query(await fs.readFile(path.join(migrationsDir, files[0]), 'utf8'));
 
     const legacyStaffId = id();
@@ -52,14 +53,27 @@ try {
     await db.query(`INSERT INTO inventory_items(id,public_id,sku,name,unit) VALUES($1,$2,'LEGACY-RM','Legacy material','g')`, [legacyInventoryId, publicId('ANJ-INV')]);
     await db.query(`INSERT INTO formulas(id,public_id,customer_id,consultation_id,name) VALUES($1,$2,$3,$4,'Legacy formula')`, [legacyFormulaId, publicId('ANJ-FRM'), legacyCustomerId, legacyConsultationId]);
     await db.query(`INSERT INTO formula_items(id,formula_id,inventory_item_id,ingredient_name,quantity,unit) VALUES($1,$2,$3,'Legacy material',1,'g')`, [id(), legacyFormulaId, legacyInventoryId]);
-    for (const file of files.slice(1)) await db.query(await fs.readFile(path.join(migrationsDir, file), 'utf8'));
+    for (const file of files.slice(1)) {
+      await db.query(await fs.readFile(path.join(migrationsDir, file), 'utf8'));
+      if (file === '010_formula_ingredient_catalog.sql') {
+        await db.query(`UPDATE staff_users SET mfa_enabled=true,mfa_secret_encrypted='legacy-encrypted-secret' WHERE id=$1`, [legacyStaffId]);
+        await db.query(`INSERT INTO sessions(id,staff_user_id,token_hash,expires_at) VALUES($1,$2,'pre-password-only-session',now()+interval '1 hour')`, [id(), legacyStaffId]);
+      }
+    }
 
-    const revalidatedStaff = await db.query(`SELECT must_rotate_password FROM staff_users WHERE id=$1`, [legacyStaffId]);
+    const revalidatedStaff = await db.query(`
+      SELECT must_rotate_password,mfa_enabled,mfa_secret_encrypted
+      FROM staff_users WHERE id=$1
+    `, [legacyStaffId]);
     const revokedSessions = await db.query(`SELECT count(*)::int count FROM sessions WHERE staff_user_id=$1`, [legacyStaffId]);
     const credentialAudit = await db.query(`SELECT action FROM audit_events WHERE entity_id=$1 AND action='CREDENTIAL_REVALIDATION_REQUIRED'`, [legacyStaffId]);
     assert.equal(revalidatedStaff.rows[0].must_rotate_password, true);
+    assert.equal(revalidatedStaff.rows[0].mfa_enabled, false);
+    assert.equal(revalidatedStaff.rows[0].mfa_secret_encrypted, null);
     assert.equal(revokedSessions.rows[0].count, 0);
     assert.equal(credentialAudit.rowCount, 1);
+    const passwordOnlyAudit = await db.query(`SELECT action FROM audit_events WHERE entity_id=$1 AND action='AUTHENTICATION_POLICY_CHANGED'`, [legacyStaffId]);
+    assert.equal(passwordOnlyAudit.rowCount, 1);
     const legacyIngredientMapping = await db.query(`
       SELECT ingredient.inventory_item_id,item.formula_ingredient_id
       FROM formula_items item
